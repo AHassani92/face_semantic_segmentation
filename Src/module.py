@@ -41,7 +41,11 @@ class SegModel(pl.LightningModule):
         self.test_vis = True 
         self.accuracy = Accuracy()
 
-        self.colors = [[0, 0, 0],[255, 0, 0],[0, 255, 0],[0, 0, 255],[128, 128, 128],[255, 255, 0],[255, 0, 255],[0, 255, 255],[255, 255, 255],[255, 192, 192],[0, 128, 128], [0, 128, 0], [128, 0, 128], [0, 64, 64]]
+        # BGR color codes
+        # self.colors = [[0, 0, 0],[255, 0, 0],[0, 255, 0],[0, 0, 255],[128, 128, 128],[255, 255, 0],[255, 0, 255],[0, 255, 255],[255, 255, 255],[255, 192, 192],[0, 128, 128], [0, 128, 0], [128, 0, 128], [0, 64, 64]]
+
+        # RGB color codes
+        self.colors = [[0, 0, 0],[0, 0, 255],[0, 255, 0],[255, 0, 0],[128, 128, 128],[0, 255, 255],[255, 0, 255],[255, 255, 0],[255, 255, 255],[192, 192, 255],[128, 128, 0], [0, 128, 0], [128, 0, 128], [64, 64, 0]]
 
         self.img_height = 256
         self.img_width = 256
@@ -186,6 +190,8 @@ class SegModel(pl.LightningModule):
     # helper function to parallelize decode and writing
     def vis_helper(self, mask, img_width, img_height, colors, image_name):
         mask_color = decode_segmap(mask, img_width, img_height, colors)
+        # convert output from RGB to BGR to support opencv
+        mask_color = cv.cvtColor(mask_color, cv.COLOR_RGB2BGR)         
         cv.imwrite(image_name, mask_color)
 
 def main(config):
