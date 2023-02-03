@@ -1,0 +1,15 @@
+# configuration file for model meta-learning to infer ID embeddings and synthetic classification
+# idea is to regularize the embeddings by also understanding synthetic vs real imagery
+
+# model type -> face ID verification
+Face_ID : 
+  input_keys : ['image']
+  loss_keys : ['id', 'synthetic']
+  accuracy_keys : ['id', 'synthetic']
+
+  # MobileNetV3, ResNet18, ResNet50, ResNet101, InceptionV3, InceptionResNet
+  encoder : 'ResNet50'
+  img_size : None
+
+  # pre-train paths
+  pretrain: None
