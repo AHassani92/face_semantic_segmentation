@@ -97,6 +97,8 @@ class Configs(object):
 		for dataset in ledgers:
 			self.datasets['num_IDs'] += dataset_args['num_IDs'][dataset]
 
+		self.num_seg_classes = 19
+
 		# visualize datasets in debug mode
 		if self.DEBUG:
 			print(self.datasets)

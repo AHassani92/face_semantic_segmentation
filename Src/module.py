@@ -31,9 +31,6 @@ from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 # helper function to automate key parsing
 def parse_data(data, keys):
 
-    # if len(keys) == 1:
-    #     parsed = data[keys[0]]
-    # else:
     parsed = {}
 
     for key in keys:
@@ -56,7 +53,7 @@ class Face_Seg(pl.LightningModule):
 
         # fetch the model
         if self.architecture == 'FaceSeg':
-            self.net = FaceSeg(encoder = config.encoder, decoder = config.decoder, num_classes = config.datasets['num_IDs'], missing_labels_mask = self.missing_labels)
+            self.net = FaceSeg(encoder = config.encoder, decoder = config.decoder, num_classes = len(self.colors), missing_labels_mask = self.missing_labels)
 
 
         # set the loss and accuracy methods
@@ -134,16 +131,14 @@ class Face_Seg(pl.LightningModule):
         # calculate the loss
         loss = self.loss(inference, parse_data(labels, self.loss_keys))
 
-        # # calculate the accuracy metrics
-        # label_acc = parse_data(labels, self.accuracy_keys)
-        # acc = self.accuracy(inference, label_acc)
+        # calculate the accuracy metrics
+        label_acc = parse_data(labels, self.accuracy_keys)
+        acc = self.accuracy(inference, label_acc)
 
-        # for keys in acc.keys():
-        #     acc[keys] = float(sum(acc[keys])/self.batch_size_train)
+        for keys in acc.keys():
+            acc[keys] = float(sum(acc[keys])/self.batch_size_train)
 
-        # #self.log('acc_step', acc, on_step=True, on_epoch = False, prog_bar=True, logger=True, sync_dist=True, batch_size=self.batch_size_train)
-        # # self.log('acc_avg', acc['id'], on_step=False, on_epoch = True, prog_bar=True, logger=True, sync_dist=True, batch_size=self.batch_size_train)
-        # self.log_dict(acc, on_step=True, on_epoch = False, prog_bar=True, logger=True, sync_dist=True, batch_size=self.batch_size_train)
+        self.log_dict(acc, on_step=True, on_epoch = False, prog_bar=True, logger=True, sync_dist=True, batch_size=self.batch_size_train)
         return {'loss' : loss}
     
     # calculate the validation accuracy
@@ -161,8 +156,16 @@ class Face_Seg(pl.LightningModule):
         # calculate the loss
         loss_val = self.loss(inference, parse_data(labels, self.loss_keys))
 
+
+        # calculate the accuracy metrics
+        label_val = parse_data(labels, self.accuracy_keys)
+        val_acc = self.accuracy(inference, label_val)
+
+        for keys in acc.keys():
+            val_acc[keys] = float(sum(val_acc[keys])/self.batch_size_train)
+
+        self.log_dict(val_acc, on_step=True, on_epoch = False, prog_bar=True, logger=True, sync_dist=True, batch_size=self.batch_size_train)
         self.log('loss_val', loss_val, on_epoch=True, prog_bar=True, logger=True, sync_dist=True, batch_size=self.batch_size_train)
-        #self.log('val_acc', val_acc, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         return {'loss_val' : loss_val}
 
 

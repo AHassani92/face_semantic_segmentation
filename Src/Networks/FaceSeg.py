@@ -52,12 +52,10 @@ class FaceSeg(nn.Module):
     def accuracy(self, prediction, labels):
 
         # convert the predictions into a score
-        # prediction = nn.Softmax(prediction, dim = 1)
-        #mask_logits = np.argmax(prediction['seg_mask'].cpu().detach().numpy(), axis = 1)
         mask_logits = torch.argmax(prediction['seg_mask'], axis = 1)
 
         # calculate the accuracy
         acc = mask_logits == labels['seg_mask']
-        acc = torch.mean(torch.mean(acc))
+        acc = torch.sum(acc, dim= [1,2]).float()/(acc.shape[1]*acc.shape[2])
 
         return {'acc_mask' : acc}
