@@ -164,7 +164,7 @@ class Face_Seg(pl.LightningModule):
         label_val = parse_data(labels, self.accuracy_keys)
         val_acc = self.accuracy(inference, label_val)
 
-        for keys in acc.keys():
+        for keys in val_acc.keys():
             val_acc[keys] = float(sum(val_acc[keys])/self.batch_size_train)
 
         self.log_dict(val_acc, on_step=True, on_epoch = False, prog_bar=True, logger=True, sync_dist=True, batch_size=self.batch_size_train)
