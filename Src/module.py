@@ -18,111 +18,171 @@ import cv2 as cv
 import multiprocessing as mp
 import asyncio
 
-from Src.data import mut1ny_dataset, decode_segmap
+# Perception library assets
+from Src.Networks.FaceSeg import FaceSeg
+from Src.Data.Data import dataset_generator, decode_segmap
+from Src.Utils.Statistics import confusion_matrix, accuracy_rates, epoch_end_extract, generate_pairwise_ledger, pairwise_distance_ledger, pairwise_accuracy
+from Src.Utils.DVP import write_eval
 
-from torchmetrics import Accuracy
 from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
-import segmentation_models_pytorch as smp
 import ssl
 
-class SegModel(pl.LightningModule):
+
+
+# helper function to automate key parsing
+def parse_data(data, keys):
+
+    # if len(keys) == 1:
+    #     parsed = data[keys[0]]
+    # else:
+    parsed = {}
+
+    for key in keys:
+        parsed[key] = data[key]
+        #[data[key] for key in keys]
+
+    return parsed
+
+class Face_Seg(pl.LightningModule):
     def __init__(self, config):
-        super(SegModel, self).__init__()
-        self.batch_size = config.batch_size_train
-        self.batch_size_test = config.batch_size_test
-        self.train_split = .7
-        self.val_split = .2
-        self.test_split = .1
-        self.learning_rate = 1e-3
+        super(Face_Seg, self).__init__()
+
+        # define the base models
         self.architecture = config.architecture
-        self.encoder = config.encoder
-        self.test_root = config.test_root
-        self.test_vis = True 
-        self.accuracy = Accuracy()
+        self.input_keys = config.input_keys
+        self.loss_keys = config.loss_keys
+        self.accuracy_keys = config.accuracy_keys
+        self.colors = config.colors
+        self.missing_labels = config.missing_labels
 
-        # BGR color codes
-        # self.colors = [[0, 0, 0],[255, 0, 0],[0, 255, 0],[0, 0, 255],[128, 128, 128],[255, 255, 0],[255, 0, 255],[0, 255, 255],[255, 255, 255],[255, 192, 192],[0, 128, 128], [0, 128, 0], [128, 0, 128], [0, 64, 64]]
+        # fetch the model
+        if self.architecture == 'FaceSeg':
+            self.net = FaceSeg(encoder = config.encoder, decoder = config.decoder, num_classes = config.datasets['num_IDs'], missing_labels_mask = self.missing_labels)
 
-        # RGB color codes
-        self.colors = [[0, 0, 0],[0, 0, 255],[0, 255, 0],[255, 0, 0],[128, 128, 128],[0, 255, 255],[255, 0, 255],[255, 255, 0],[255, 255, 255],[192, 192, 255],[128, 128, 0], [0, 128, 0], [128, 0, 128], [64, 64, 0]]
 
-        self.img_height = 256
-        self.img_width = 256
+        # set the loss and accuracy methods
+        self.loss = self.net.loss
+        self.accuracy = self.net.accuracy
 
-        if self.architecture == 'unet':
-            #self.net = UNet(num_classes = 19, bilinear = False)
-            self.net = smp.Unet(self.encoder, classes = 19)
-        elif self.architecture == 'unetpp':
-            self.net = smp.UnetPlusPlus(self.encoder, classes = 19)
-        elif self.architecture == 'deeplab':
-            #self.net = smp.DeepLabV3(encoder, classes = 19)
-            self.net = smp.DeepLabV3Plus(self.encoder, classes = 19)
-        elif self.architecture == 'enet':
-            self.net = ENet(num_classes = 19)
-
+        # tensor transformations 
+        # TO DO -> fix the normalization values
         self.transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(mean = [0.35675976, 0.37380189, 0.3764753], std = [0.32064945, 0.32098866, 0.32325324])
+            transforms.Normalize(mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225])
         ])
 
-        # get the data ledger
-        self.dataset = config.dataset
-        dataset_path = os.path.join(config.data_root, config.dataset)
-        self.data_ledger = os.path.join(config.data_root, config.dataset, config.data_ledger)
+        # configure the parameters
+        self.cross_val = config.cross_val
+        self.batch_size_train = config.batch_size_train
+        self.batch_size_test = config.batch_size_test
+        self.num_cpus = config.num_cpus
 
-        # get all the images
-        full_train = mut1ny_dataset(data_root = dataset_path, ledger_path = self.data_ledger, split = 'train', transform = self.transform)
+        # data utilities
+        self.data_root = config.data_root
+        self.datasets = config.datasets
+        self.img_width = config.img_width
+        self.img_height = config.img_height
+        self.face_crop = config.face_crop
+        self.location = config.location
+        self.liveliness = config.liveliness
+        self.synthetic = config.synthetic
+        self.test_root = config.test_root
+        self.experiment_name = config.experiment_name
 
-        # determine the training and validation splits
-        train_split = range(0, int(self.train_split*len(full_train)))
-        val_split = range(int(self.train_split*len(full_train)), int((self.train_split + self.val_split)*len(full_train)))
-        test_split = range(int((self.train_split + self.val_split)*len(full_train)), len(full_train))
 
-        self.trainset = Subset(full_train, train_split)
-        self.valset = Subset(full_train, val_split)
-        self.testset = Subset(full_train, test_split)
-        
+        # define network optimizations
+        self.learning_rate = config.learning_rate
+        self.threshold = 0.5
+
+        # initialize the data to null by default
+        # this allows us to simplify module init and be smart about automating data loading
+        self.train_dataset = None
+        self.val_dataset = None
+        self.test_dataset = None
+
+    # put a function pointer wrapper on forward
+    # this allows us to be agnostic to network architectures
     def forward(self, x):
         return self.net(x)
-    
-    def training_step(self, batch, batch_nb) :
-        img, mask = batch
-        img = img.float()
-        mask = mask.long()
-        out = self.forward(img)
-        loss = F.cross_entropy(out, mask)
-        #acc = self.accuracy(out, mask)
 
-        self.log('loss', loss, on_step=True, prog_bar=True, logger=True)
-        #self.log('acc', acc, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+    # function to initialize the data
+    def init_data(self, mode = None):
+
+        # verify mode split
+        valid = {'all', 'train', 'val', 'test'}
+        if mode not in valid:
+            raise ValueError("results: status must be one of %r." % valid)
+
+        # for train mode, load only train and val data
+        if mode == 'train':
+            return dataset_generator(data_root = self.data_root, datasets = self.datasets['datasets_train'], splits = self.datasets['splits_train'], img_width = self.img_width,  img_height = self.img_height, seg_colors = self.colors, face_crop = self.face_crop, liveliness = self.liveliness, location = self.location, synthetic = self.synthetic, missing_labels = self.missing_labels, cross_val = self.cross_val)
+
+        elif mode == 'val':
+            return dataset_generator(data_root = self.data_root, datasets = self.datasets['datasets_val'], splits = self.datasets['splits_val'], img_width = self.img_width,  img_height = self.img_height, seg_colors = self.colors, face_crop = self.face_crop, liveliness = self.liveliness, location = self.location, synthetic = self.synthetic, missing_labels = self.missing_labels, cross_val = self.cross_val)
+
+        elif mode == 'test':
+            return dataset_generator(data_root = self.data_root, datasets = self.datasets['datasets_test'], splits = self.datasets['splits_test'], img_width = self.img_width,  img_height = self.img_height, seg_colors = self.colors, face_crop = self.face_crop, liveliness = self.liveliness, location = self.location, synthetic = self.synthetic, missing_labels = self.missing_labels, cross_val = self.cross_val)
+
+
+    # impliment the model forward pass on the data and report loss
+    def training_step(self, batch, batch_idx):
+
+        # calculate the loss
+        net_inputs, labels, meta_data = batch
+
+        # network inference
+        inference = self.forward(parse_data(net_inputs, self.input_keys))
+
+        # calculate the loss
+        loss = self.loss(inference, parse_data(labels, self.loss_keys))
+
+        # # calculate the accuracy metrics
+        # label_acc = parse_data(labels, self.accuracy_keys)
+        # acc = self.accuracy(inference, label_acc)
+
+        # for keys in acc.keys():
+        #     acc[keys] = float(sum(acc[keys])/self.batch_size_train)
+
+        # #self.log('acc_step', acc, on_step=True, on_epoch = False, prog_bar=True, logger=True, sync_dist=True, batch_size=self.batch_size_train)
+        # # self.log('acc_avg', acc['id'], on_step=False, on_epoch = True, prog_bar=True, logger=True, sync_dist=True, batch_size=self.batch_size_train)
+        # self.log_dict(acc, on_step=True, on_epoch = False, prog_bar=True, logger=True, sync_dist=True, batch_size=self.batch_size_train)
         return {'loss' : loss}
     
+    # calculate the validation accuracy
     def validation_step(self, batch, batch_idx):
         """That function operation at each validation step. confusion matrixes are being appended an validaton loss and
         accuracies are being logged
         """
 
-        img, mask = batch
-        img = img.float()
-        mask = mask.long()
-        out = self.forward(img)
-        loss_val = F.cross_entropy(out, mask, ignore_index = 250)
+        # calculate the loss
+        net_inputs, labels, meta_data = batch
 
-        self.log('loss_val', loss_val, on_epoch=True, prog_bar=True, logger=True)
+        # network inference
+        inference = self.forward(parse_data(net_inputs, self.input_keys))
+
+        # calculate the loss
+        loss_val = self.loss(inference, parse_data(labels, self.loss_keys))
+
+        self.log('loss_val', loss_val, on_epoch=True, prog_bar=True, logger=True, sync_dist=True, batch_size=self.batch_size_train)
         #self.log('val_acc', val_acc, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        return {'loss_val' : loss_val}
+        #return {'loss_val' : loss_val}
 
 
-    # make the test storage directory
+    # load test data if not already available
+    # make the test directory if does not exist
     def on_test_start(self) -> None:
-        self.test_dir_dataset = os.path.join(self.test_root, self.dataset)
-        if not os.path.exists(self.test_dir_dataset):
-            os.makedirs(self.test_dir_dataset)
 
-        self.test_dir = os.path.join(self.test_dir_dataset, self.architecture + '-' + self.encoder + '/')
-        if not os.path.exists(self.test_dir):
-            os.makedirs(self.test_dir)
+        # generate the Test directory if doesn't exist
+        if not os.path.exists(self.test_root):
+            os.makedirs(self.test_root)
+
+        # generate a specific experiment repo if it doesn't exist:
+        self.test_root = os.path.join(self.test_root, self.experiment_name)
+        if not os.path.exists(self.test_root):
+            os.makedirs(self.test_root)
+
+        # define the test report
+        self.test_report = os.path.join(self.test_root, self.architecture + '_eval.csv')
 
     def test_step(self, batch, batch_idx):
 
@@ -154,38 +214,101 @@ class SegModel(pl.LightningModule):
         self.log('loss_test', loss_test)
         return {'loss_test' : loss_test}
 
+
+    # def test_step(self, batch, batch_idx):
+
+
+    #     # calculate the loss
+    #     net_inputs, labels, meta_data = batch
+
+    #     # network inference
+    #     inference = self.forward(parse_data(net_inputs, self.input_keys))
+
+    #     # calculate the loss
+    #     loss_test = self.loss(inference, parse_data(labels, self.loss_keys))
+
+    #     # calculate the accuracy metrics
+    #     label_acc = parse_data(labels, self.accuracy_keys)
+    #     acc_test = self.accuracy(inference, label_acc)
+    #     rate = float(sum(acc_test)/self.batch_size_test)
+
+    #     # get the evaluation statistics
+    #     metrics = confusion_matrix(acc_test.cpu().numpy(), torch.argmax(label_acc, axis = 1).cpu().numpy())
+    #     # statistics = accuracy_rates(metrics['TN'], metrics['FN'], metrics['TP'], metrics['FP'])
+    #     attack_metrics = attack_class_eval(acc_test, meta_data)
+
+    #     # log the metrics
+    #     self.log('loss_test', loss_test, prog_bar=True, batch_size=self.batch_size_test, sync_dist=True)
+    #     # self.log_dict(statistics, batch_size=self.batch_size_test)
+
+
+    #     # return the accuracy metrics
+    #     metrics = {**metrics, **attack_metrics}
+
+    #     return metrics
+
+
+    # def test_epoch_end(self, outputs) -> None:
+    #     """
+    #     This function accumulates all the test metrics and writes them to disk in the results folder.
+    #     """
+        
+    #     # extract the test outputs into a simple dictionary
+    #     outputs = epoch_end_extract(outputs)
+
+    #     # calculate the pairwise distance
+    #     embeddings = torch.cat(outputs['embeddings'], dim=0) 
+    #     labels = torch.cat(outputs['labels'], dim=0)
+
+    #     # compute the similarity metrics
+    #     self.pairwise_ledger = generate_pairwise_ledger(labels) 
+    #     similarities, targets = pairwise_distance_ledger(embeddings, labels, self.pairwise_ledger, samples = 100000)
+
+    #     # need to break out TP, FP, TN, FN into stats
+    #     stats = pairwise_accuracy(similarities.cpu().numpy(), targets.cpu().numpy())
+
+    #     self.log('acc_test', stats['accuracy'], prog_bar=True, logger=True)
+    #     self.log('th_test', stats['threshold'], prog_bar=True, logger=True)
+
+    #     # statistics = accuracy_rates(sum(outputs['TN']), sum(outputs['FN']), sum(outputs['TP']), sum(outputs['FP']))
+    #     # attack_statistics = attack_class_rates(outputs)
+    #     # self.log_dict(statistics, batch_size=self.batch_size_test)
+    #     #self.log_dict(attack_statistics, batch_size=self.batch_size_test)
+
+    #     # define the ledger file and store it
+        
+    #     statistics = {**statistics, **attack_statistics}
+    #     name = 'Cross validation ' + str(self.cross_val) if self.cross_val != None else 'Base'
+    #     write_eval(self.test_report, eval = statistics, name = name)
+
     def configure_optimizers(self):
         opt = torch.optim.Adam(self.net.parameters(), lr = self.learning_rate)
         sch = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max = 10)
         return [opt], [sch]
     
+    # trainer function to load the train dataset
     def train_dataloader(self):
-        return DataLoader(self.trainset, batch_size = self.batch_size, shuffle = True, num_workers=32, drop_last=True)
 
+        # define the dataset
+        train_dataset = self.init_data(mode = 'train')
+        
+        return DataLoader(train_dataset, batch_size = self.batch_size_train, shuffle = True, num_workers=self.num_cpus, drop_last=True)
+
+    # trainer function to load the val dataset
     def val_dataloader(self):
-        return DataLoader(self.valset, batch_size = self.batch_size, shuffle = False, num_workers=32, drop_last=True)
+
+        # define the dataset
+        val_dataset = self.init_data(mode = 'val')
+
+        return DataLoader(val_dataset, batch_size = self.batch_size_train, shuffle = False, num_workers=self.num_cpus, drop_last=True)
     
+    # trainer function to load the test dataset
     def test_dataloader(self):
-        return DataLoader(self.testset, batch_size = self.batch_size_test, shuffle = False, num_workers= 32, drop_last=True)
 
-    # # function to map logical values to color
-    # def decode_segmap(self, mask_logits, img_width, img_height, colors):
+        # define the dataset
+        test_dataset = self.init_data(mode = 'test')
 
-    #     # # convert operation to CPU for loops
-    #     # mask_logits_batch = mask_logits_batch.cpu().detach()#.numpy()
-
-    #     # mask_rgb_list = []
-    #     # for mask_logits in mask_logits_batch:
-    #         # get the inferred logical value from the 14 channels
-    #     mask_logits = np.argmax(mask_logits, axis = 0)
-
-    #     # map over the values using color codes
-    #     mask_rgb = np.zeros((img_height, img_width, 3), dtype = np.uint8)
-    #     for y in range(img_height):
-    #         for x in range(img_width):
-    #             mask_rgb[y,x] = colors[mask_logits[y,x]]
-            
-    #     return mask_rgb
+        return DataLoader(test_dataset, batch_size = self.batch_size_test, shuffle = False, num_workers= self.num_cpus, drop_last=True)
 
     # helper function to parallelize decode and writing
     def vis_helper(self, mask, img_width, img_height, colors, image_name):
@@ -196,12 +319,12 @@ class SegModel(pl.LightningModule):
 
 def main(config):
     ssl._create_default_https_context = ssl._create_unverified_context
-    model = SegModel(config)
+    model = Face_Seg(config)
 
     # auto save if best model
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
         dirpath = 'models/checkpoints_mut1ny/', #checkpoints is for KITT
-        filename= config.dataset + '-' + config.architecture + '-' + config.encoder + '-{epoch:02d}',
+        filename= config.best_path,
         save_top_k = 1,
         verbose = True, 
         monitor = 'loss_val',

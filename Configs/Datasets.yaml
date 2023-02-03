@@ -1,0 +1,21 @@
+# configuration file for the datasets
+# options: ['mut1ny_head_segmentation_pro_v2']
+
+train : 
+  mut1ny_head_segmentation_pro_v2 :
+    split: train
+    
+val :
+  mut1ny_head_segmentation_pro_v2 :
+    split: val    
+
+test :
+  mut1ny_head_segmentation_pro_v2 :
+    split: test 
+
+
+num_classes:
+  mut1ny_head_segmentation_pro_v2: 19
+
+num_IDs:
+  mut1ny_head_segmentation_pro_v2: 85
