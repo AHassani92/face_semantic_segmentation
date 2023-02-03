@@ -186,11 +186,10 @@ class dataset_generator(data.Dataset):
             self.im_face_bboxes.append(bbox)
 
             # ledger specific information
-            self.seg_mask_paths.append(row['mask_path'] if 'mask_path' in columns else None)
+            self.seg_mask_paths.append(os.path.join(dataset, row['mask_path']) if 'mask_path' in columns else None)
             self.im_labels_attack_class.append(row['attack_class'] if 'attack_class' in columns else 'Unknown')
             self.im_labels_location.append(row['location'] if 'location' in columns else 'Unknown')
             self.im_labels_synthetic.append(0 if 'synthetic' in columns and row['synthetic'] == 'synethic' else 1)
-
 
     def verify_data(self):
         for k in range(self.data_len):

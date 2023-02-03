@@ -26,8 +26,6 @@ from Src.Utils.DVP import write_eval
 
 from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
-import ssl
-
 
 
 # helper function to automate key parsing
@@ -165,7 +163,7 @@ class Face_Seg(pl.LightningModule):
 
         self.log('loss_val', loss_val, on_epoch=True, prog_bar=True, logger=True, sync_dist=True, batch_size=self.batch_size_train)
         #self.log('val_acc', val_acc, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        #return {'loss_val' : loss_val}
+        return {'loss_val' : loss_val}
 
 
     # load test data if not already available
@@ -213,40 +211,6 @@ class Face_Seg(pl.LightningModule):
 
         self.log('loss_test', loss_test)
         return {'loss_test' : loss_test}
-
-
-    # def test_step(self, batch, batch_idx):
-
-
-    #     # calculate the loss
-    #     net_inputs, labels, meta_data = batch
-
-    #     # network inference
-    #     inference = self.forward(parse_data(net_inputs, self.input_keys))
-
-    #     # calculate the loss
-    #     loss_test = self.loss(inference, parse_data(labels, self.loss_keys))
-
-    #     # calculate the accuracy metrics
-    #     label_acc = parse_data(labels, self.accuracy_keys)
-    #     acc_test = self.accuracy(inference, label_acc)
-    #     rate = float(sum(acc_test)/self.batch_size_test)
-
-    #     # get the evaluation statistics
-    #     metrics = confusion_matrix(acc_test.cpu().numpy(), torch.argmax(label_acc, axis = 1).cpu().numpy())
-    #     # statistics = accuracy_rates(metrics['TN'], metrics['FN'], metrics['TP'], metrics['FP'])
-    #     attack_metrics = attack_class_eval(acc_test, meta_data)
-
-    #     # log the metrics
-    #     self.log('loss_test', loss_test, prog_bar=True, batch_size=self.batch_size_test, sync_dist=True)
-    #     # self.log_dict(statistics, batch_size=self.batch_size_test)
-
-
-    #     # return the accuracy metrics
-    #     metrics = {**metrics, **attack_metrics}
-
-    #     return metrics
-
 
     # def test_epoch_end(self, outputs) -> None:
     #     """
@@ -316,42 +280,3 @@ class Face_Seg(pl.LightningModule):
         # convert output from RGB to BGR to support opencv
         mask_color = cv.cvtColor(mask_color, cv.COLOR_RGB2BGR)         
         cv.imwrite(image_name, mask_color)
-
-def main(config):
-    ssl._create_default_https_context = ssl._create_unverified_context
-    model = Face_Seg(config)
-
-    # auto save if best model
-    checkpoint_callback = pl.callbacks.ModelCheckpoint(
-        dirpath = 'models/checkpoints_mut1ny/', #checkpoints is for KITT
-        filename= config.best_path,
-        save_top_k = 1,
-        verbose = True, 
-        monitor = 'loss_val',
-        mode = 'min'
-    )
-
-    # stop if loss has not improved for 5 epochs
-    early_stopping = EarlyStopping(
-        monitor="loss",
-        min_delta=0.001,
-        patience=10)
-
-
-    # for training
-    if config.mode == 'Train':
-        # debug on single GPU
-        if config.DEBUG:
-            trainer = pl.Trainer(accelerator='gpu', devices=1, auto_select_gpus=True, max_epochs = 150, callbacks = [checkpoint_callback, early_stopping], log_every_n_steps = 1)
-        else:
-            trainer = pl.Trainer(accelerator='gpu', devices=config.num_gpus, auto_select_gpus=True, strategy=DDPStrategy(find_unused_parameters=False), num_nodes =1, max_epochs = 150, callbacks = [checkpoint_callback, early_stopping], log_every_n_steps = 1)
-        trainer.fit(model)
-    # trainer.test(ckpt_path='best')
-
-    # for testing
-    if config.mode == 'Test':
-        trainer = pl.Trainer(accelerator='gpu', devices=1, auto_select_gpus=True, log_every_n_steps = 1)
-        ckpt_path = os.path.join(config.models_root, config.best_check_point)
-        trainer.test(model, ckpt_path=ckpt_path)
-
-

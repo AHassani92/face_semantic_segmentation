@@ -8,7 +8,7 @@ class Configs(object):
 	def __init__(self):
 		super(Configs, self).__init__()
 		# simple flag for debugging
-		self.DEBUG = True
+		self.DEBUG = False
 		#assert self.DEBUG in ['True', 'False']
 
 		# determine training vs testing
