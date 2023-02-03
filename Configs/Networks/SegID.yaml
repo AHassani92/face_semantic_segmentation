@@ -1,0 +1,19 @@
+# configuration file for FaceSeg models
+
+# model type -> face ID verification
+Face_Seg: 
+  input_keys : ['image']
+  loss_keys : ['id, seg_mask']
+  accuracy_keys : ['id, seg_mask']
+
+  # encoder options: MobileNetV3, resnet34, resnet50, resnet101, InceptionV3, InceptionResNet
+  encoder : 'resnet50'
+
+  # decoder options: unet, unetpp, deeplab 
+  decoder : 'deeplab'
+
+  # force 256 for segmentation
+  img_size : 256
+
+  # pre-train paths
+  pretrain: None
