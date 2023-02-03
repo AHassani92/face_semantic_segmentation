@@ -24,7 +24,12 @@ def decode_segmap(mask_logits, img_width, img_height, colors):
 
 class mut1ny_dataset(data.Dataset):
     def __init__(self, data_root, ledger_path, split = 'train', transform = None):
-        self.colors = [(0, 0, 0),(255, 0, 0),(0, 255, 0),(0, 0, 255),(128, 128, 128),(255, 255, 0),(255, 0, 255),(0, 255, 255),(255, 255, 255),(255, 192, 192),(0, 128, 128), (0, 128, 0), (128, 0, 128), (0, 64, 64)]
+        # BGR color codes
+        # self.colors = [[0, 0, 0],[255, 0, 0],[0, 255, 0],[0, 0, 255],[128, 128, 128],[255, 255, 0],[255, 0, 255],[0, 255, 255],[255, 255, 255],[255, 192, 192],[0, 128, 128], [0, 128, 0], [128, 0, 128], [0, 64, 64]]
+
+        # RGB color codes
+        self.colors = [[0, 0, 0],[0, 0, 255],[0, 255, 0],[255, 0, 0],[128, 128, 128],[0, 255, 255],[255, 0, 255],[255, 255, 0],[255, 255, 255],[192, 192, 255],[128, 128, 0], [0, 128, 0], [128, 0, 128], [64, 64, 0]]
+
         self.split = split
         self.transform = transform        
 
@@ -39,10 +44,12 @@ class mut1ny_dataset(data.Dataset):
     
     def __getitem__(self, idx):
         img = cv.imread(self.img_list[idx])
+        img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
         img = cv.resize(img, (self.img_width, self.img_height), interpolation = cv.INTER_LINEAR)
         mask = None
         if self.split == 'train':
             mask = cv.imread(self.mask_list[idx])
+            mask = cv.cvtColor(mask, cv.COLOR_BGR2RGB)
             mask = cv.resize(mask, (self.img_width, self.img_height), interpolation= cv.INTER_NEAREST)
             mask = self.encode_segmap(mask)
             assert(mask.shape == (self.img_width, self.img_height))
