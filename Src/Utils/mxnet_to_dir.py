@@ -7,7 +7,7 @@ import cv2 as cv
 import mxnet as mx
 import numpy as np
 
-def data_write_mp(write_root, label, index, image):
+def data_write_mp(write_root, label, index, mx_img):
     
     # determine the proper directory
     directory = 'Participant_'+str(int(label)).zfill(5)
@@ -16,6 +16,9 @@ def data_write_mp(write_root, label, index, image):
     directory = os.path.join(write_root, directory)
     if not os.path.exists(directory):
         os.makedirs(directory)   
+        
+    image = mx.image.imdecode(mx_img).asnumpy()
+    image = Image.fromarray(image) 
     
     im_name = 'im_' + str(index).zfill(3) + '.png'
     im_path = os.path.join(directory, im_name)
@@ -50,10 +53,8 @@ def mxnext_to_dir(data_root, write_root = None):
     
     pool = mp.Pool(mp.cpu_count())
     
-    #print('Processing MX Net Ledger with {} CPUS'.format(mp.cpu_count()))
-    print('Processing MX Net Ledger')
-    #for index in range(len(imgidx)):
-    for index in range(10):
+    print('Processing MX Net Ledger with {} CPUS'.format(mp.cpu_count()))
+    for index in range(len(imgidx)):
         idx = imgidx[index]
         s = imgrec.read_idx(idx)
         header, mx_img = mx.recordio.unpack(s)
@@ -65,18 +66,12 @@ def mxnext_to_dir(data_root, write_root = None):
         if prev_label != label:
             prev_label = label
             idx_offset = idx
-        
-        image = mx.image.imdecode(mx_img).asnumpy()
-        image = Image.fromarray(image) 
     
         # call the multiprocessing write function
-        #data_write_mp(write_root, label, idx - idx_offset, mx_img)
-        #pool.apply_async(data_write_mp,  args=(write_root, label, idx - idx_offset, mx_img))
-        pool.apply_async(data_write_mp,  args=(write_root, label, idx - idx_offset, image))
-        
+        pool.apply_async(data_write_mp,  args=(write_root, label, idx - idx_offset, mx_img))
+
         if index == 0 or index % 10000 == 0:
-            print('Adding index {} with label {}'.format(index, label))
-            #print('Adding index {} to MP pool with label {}'.format(index, label))
+            print('Adding index {} to MP pool with label {}'.format(index, label))
                 
     print('Executing pool')
     pool.close()
@@ -84,8 +79,8 @@ def mxnext_to_dir(data_root, write_root = None):
 
 
 
-data_root = 'F:\\Data\\faces_emore\\faces_emore'
-write_root = 'F:\\Data\\MS1M'
+data_root = '/s/ahassa37/Data/faces_emore'
+write_root = '/s/ahassa37/Data/MS1M'
 
 
 mxnext_to_dir(data_root, write_root)
