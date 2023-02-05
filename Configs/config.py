@@ -63,7 +63,7 @@ class Configs(object):
 
 		# verify the architecture supports the model type
 		if self.model_type == 'Face_Seg':
-			assert self.architecture in ['FaceSeg']
+			assert self.model_type in ['Face_Seg', 'Face_ID']
 
 		self.get_architecture_params()
 
