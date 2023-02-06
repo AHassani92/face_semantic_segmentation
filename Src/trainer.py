@@ -19,7 +19,7 @@ import multiprocessing as mp
 import asyncio
 
 # Perception library assets
-from Src.module import Face_Seg
+from Src.module import Face_Seg, Face_ID
 
 from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
@@ -27,8 +27,12 @@ import ssl
 
 def main(config):
     ssl._create_default_https_context = ssl._create_unverified_context
-    model = Face_Seg(config)
 
+    if config.model_type == 'Face_Seg'
+        model = Face_Seg(config)
+    elif  config.model_type == 'Face_ID'
+        model = Face_ID(config)
+        
     # auto save if best model
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
         dirpath = 'models/checkpoints_mut1ny/', #checkpoints is for KITT

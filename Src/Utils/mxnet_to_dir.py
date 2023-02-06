@@ -79,8 +79,8 @@ def mxnext_to_dir(data_root, write_root = None):
 
 
 
-data_root = '/s/ahassa37/Data/faces_emore'
-write_root = '/s/ahassa37/Data/MS1M'
+data_root = ''
+write_root = ''
 
 
 mxnext_to_dir(data_root, write_root)

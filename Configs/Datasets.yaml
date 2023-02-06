@@ -14,8 +14,9 @@ test :
     split: test 
 
 
-num_classes:
+num_seg_classes:
   mut1ny_head_segmentation_pro_v2: 19
 
 num_IDs:
   mut1ny_head_segmentation_pro_v2: 85
+  MS1M: 85742
