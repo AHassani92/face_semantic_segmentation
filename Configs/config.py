@@ -26,8 +26,8 @@ class Configs(object):
 
 		# experiment configuration
 		self.experiment_name = 'SegID_experimentation'
-		self.model_type = 'Face_Seg' # ['Face_Detect', 'Face_ID', 'Face_PAD', 'Face_Seg']
-		assert self.model_type in ['Face_Detect', 'Face_ID', 'Face_PAD', 'Face_Seg']
+		self.model_type = 'Face_Seg_ID' # ['Face_Detect', 'Face_ID', 'Face_PAD', 'Face_Seg', 'Face_Seg_ID']
+		assert self.model_type in ['Face_Detect', 'Face_ID', 'Face_PAD', 'Face_Seg', 'Face_Seg_ID']
 
 		# use datasets yaml to setup the dataset configuration
 		self.get_datasets_parms()
@@ -59,11 +59,13 @@ class Configs(object):
 
 		# model builder configs
 		# architecture options: ['Texture', 'DGFA', 'CDCN', 'LGSC', 'SAIPS']
-		self.architecture = 'FaceSeg' 
+		self.architecture = 'SegID' 
 
 		# verify the architecture supports the model type
 		if self.model_type == 'Face_Seg':
 			assert self.architecture in ['FaceSeg']
+		elif self.model_type == 'Face_Seg_ID':
+			assert self.architecture in ['SegID']
 
 		self.get_architecture_params()
 
@@ -121,6 +123,9 @@ class Configs(object):
 		if self.model_type == 'Face_Seg':
 			self.decoder = configs_args[self.model_type]['decoder']
 			assert self.decoder in ['none', 'unet', 'unetpp', 'deeplab']
+		elif self.model_type == 'Face_Seg_ID':
+			self.decoder = configs_args[self.model_type]['decoder']
+			assert self.decoder in ['none', 'unet', 'unetpp', 'deeplab']			
 		else:
 			self.decoder = None
 

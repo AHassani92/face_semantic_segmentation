@@ -18,7 +18,7 @@ import math
 
 
 """
-Implimentaiton of the ArcFace loss function
+Implementaiton of the ArcFace loss function
 See official repository: https://github.com/deepinsight/insightface/tree/master/recognition/arcface_torch
 """
 

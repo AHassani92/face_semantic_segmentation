@@ -57,8 +57,7 @@ class Face_Seg(pl.LightningModule):
             self.net = FaceSeg(encoder = config.encoder, decoder = config.decoder, num_classes = len(self.colors), missing_labels_mask = self.missing_labels)
 
         if self.architecture == 'SegID':
-            self.net = SegID(encoder = config.encoder, decoder = config.decoder, num_classes = len(self.colors), missing_labels_mask = self.missing_labels)
-
+            self.net = SegID(encoder = config.encoder, decoder = config.decoder, num_seg_classes = len(self.colors), num_id_classes = config.datasets['num_IDs'], missing_labels_mask = self.missing_labels)
 
         # set the loss and accuracy methods
         self.loss = self.net.loss
