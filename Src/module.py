@@ -21,6 +21,7 @@ import asyncio
 # Perception library assets
 from Src.Networks.FaceSeg import FaceSeg
 from Src.Networks.SegID import SegID
+from Src.Networks.SegVerID import SegVerID
 from Src.Data.Data import dataset_generator, decode_segmap
 from Src.Utils.Statistics import confusion_matrix, accuracy_rates, epoch_end_extract, generate_pairwise_ledger, pairwise_distance_ledger, pairwise_accuracy
 from Src.Utils.DVP import write_eval
@@ -52,13 +53,16 @@ class Face_Seg(pl.LightningModule):
         self.colors = config.colors
         self.missing_labels = config.missing_labels
 
-        # fetch the model
+        # fetch the model based on the defined model architecture
         if self.architecture == 'FaceSeg':
             self.net = FaceSeg(encoder = config.encoder, decoder = config.decoder, num_classes = len(self.colors), missing_labels_mask = self.missing_labels)
 
-        if self.architecture == 'SegID':
+        elif self.architecture == 'SegID':
             self.net = SegID(encoder = config.encoder, decoder = config.decoder, num_seg_classes = len(self.colors), num_id_classes = config.datasets['num_IDs'], missing_labels_mask = self.missing_labels)
-
+        
+        elif self.architecture == 'SegVerID':
+            self.net = SegVerID(encoder = config.encoder, decoder = config.decoder, num_seg_classes = len(self.colors), num_id_classes = config.datasets['num_IDs'], missing_labels_mask = self.missing_labels)
+        
         # set the loss and accuracy methods
         self.loss = self.net.loss
         self.accuracy = self.net.accuracy

@@ -59,13 +59,13 @@ class Configs(object):
 
 		# model builder configs
 		# architecture options: ['Texture', 'DGFA', 'CDCN', 'LGSC', 'SAIPS']
-		self.architecture = 'SegID' 
+		self.architecture = 'SegVerID' 
 
 		# verify the architecture supports the model type
 		if self.model_type == 'Face_Seg':
 			assert self.architecture in ['FaceSeg']
 		elif self.model_type == 'Face_Seg_ID':
-			assert self.architecture in ['SegID']
+			assert self.architecture in ['SegID', 'SegVerID']
 
 		self.get_architecture_params()
 

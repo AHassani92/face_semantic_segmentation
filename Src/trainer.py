@@ -28,10 +28,12 @@ import ssl
 def main(config):
     ssl._create_default_https_context = ssl._create_unverified_context
 
-    if config.model_type == 'Face_Seg'
+    if config.model_type == 'Face_Seg':
         model = Face_Seg(config)
-    elif  config.model_type == 'Face_ID'
+    elif config.model_type == 'Face_ID':
         model = Face_ID(config)
+    elif config.model_type == 'Face_Seg_ID':
+        model = Face_Seg(config)
         
     # auto save if best model
     checkpoint_callback = pl.callbacks.ModelCheckpoint(

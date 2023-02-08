@@ -1,0 +1,20 @@
+# configuration file for model meta-learning to infer ID embeddings and synthetic classification
+# idea is to regularize the embeddings by also understanding synthetic vs real imagery
+
+# model type -> face ID verification
+Face_Seg_ID: 
+  input_keys : ['image']
+  loss_keys : ['id', 'seg_mask']
+  accuracy_keys : ['id', 'seg_mask']
+
+  # MobileNetV3, ResNet18, ResNet50, ResNet101, InceptionV3, InceptionResNet
+  encoder : 'resnet50'
+
+  # decoder options: unet, unetpp, deeplab 
+  decoder : 'deeplab'
+  
+  # force 256 for segmentation
+  img_size : None
+
+  # pre-train paths
+  pretrain: None
