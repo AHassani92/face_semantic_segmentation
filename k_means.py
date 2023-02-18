@@ -5,6 +5,7 @@ import cv2 as cv
 import os
 from glob import glob
 import multiprocessing as mp
+import tqdm
 
 def encode_segmap(mask):
     '''
@@ -46,10 +47,8 @@ def process_image(im_path):
         
     return acc
 
-accuracies = []
-def log_results(result, im_path):
-	accuracies.append(result)
-	print(im_path)
+def log_results(result,):
+    accuracies.append(result)
 
 def process_image_mp(im_path):
     try:
@@ -63,10 +62,9 @@ def process_image_mp(im_path):
         # count number of unique face classes
         num_centers = len(np.unique(im))
         
-        acc = 1
-        # kmeans = KMeans(n_clusters=num_centers)
-        # kmeans.fit(im)
-        # acc = 1+kmeans.score(im)/num_centers*len(im)
+        kmeans = KMeans(n_clusters=num_centers)
+        kmeans.fit(im)
+        acc = 1+kmeans.score(im)/num_centers*len(im)
 
     except:
         acc = 0.1
@@ -74,51 +72,48 @@ def process_image_mp(im_path):
     return acc
     
 
-data_root = 'F:\\Data\\LFW Labels - mut1ny_head_segmentation_pro_v2-deeplab-resnet50-epoch=27\\lfw'
-
+accuracies = []
 colors = [[0, 0, 0],[0, 0, 255],[0, 255, 0],[255, 0, 0],[128, 128, 128],[0, 255, 255],[255, 0, 255],[255, 255, 0],[255, 255, 255],[192, 192, 255],[128, 128, 0], [0, 128, 0], [128, 0, 128], [64, 64, 0]]
 
-# set the local database root
-proj_root = os.getcwd()
 
-# set the local directory
-os.chdir(data_root)
+def main(data_root):
+    # set the local database root
+    proj_root = os.getcwd()
 
-people = glob("*/")
-NUM_FACE_CLASSES = len(people)
+    # set the local directory
+    os.chdir(data_root)
 
-# setup multiprocessing
-pool = mp.Pool(mp.cpu_count())
+    people = glob("*/")
+    NUM_FACE_CLASSES = len(people)
 
-manager = mp.Manager()
-x = manager.list()
-# 
-for i in range(10):
-    x.append([])
-index = 0
-accuracies = []
+    # setup multiprocessing
+    pool = mp.Pool(mp.cpu_count())
+    mp.freeze_support()
 
 
-for count, person in enumerate(people[0:10]):
+    paths = []
+    for count, person in enumerate(people):
+        
+        print(person, count)
+        
+        #images = glob(os.path.join(data_root, person, '*.png'))
+        paths += glob(os.path.join(data_root, person, '*.png'))
+
+    num_images = len(paths)
+
+    # accuracies = pool.map(process_image_mp, paths)
+    print('Total image masks:', num_images)
+    accuracies = list(tqdm.tqdm(pool.imap(process_image_mp, paths), total=len(paths)))
+    pool.close()
+
+    print(accuracies)
+        # if (count % 10) == 0:
+        #     print(count, np.mean(accuracies), np.min(accuracies), np.max(accuracies))
+        
+    # reset the root directory
+    os.chdir(proj_root)
+
+if __name__ == "__main__":
     
-    print(person, count)
-    
-    images = glob(os.path.join(data_root, person, '*.png'))
-    
-    # go through images and check for K Means
-    for im_path in images:
-        #acc = process_image(im_path)
-        pool.map(process_image_mp, args = (im_path), callback = log_results)
-        #accuracies.append(acc)
-        #print(acc, np.mean(accuracies), np.min(accuracies), np.max(accuracies))
-
-pool.close()
-pool.join()
-
-print(accuracies)
-    # if (count % 10) == 0:
-    #     print(count, np.mean(accuracies), np.min(accuracies), np.max(accuracies))
-    
-# reset the root directory
-os.chdir(proj_root)
-
+    data_root = 'F:\\Data\\LFW Labels - mut1ny_head_segmentation_pro_v2-deeplab-resnet50-epoch=27\\lfw'
+    main(data_root)
