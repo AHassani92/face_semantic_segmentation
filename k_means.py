@@ -108,7 +108,7 @@ def main(data_root):
     # reset the root directory
     os.chdir(proj_root)
 
-    headers = ['Mask_Path', 'Mask_Weight']
+    headers = ['mask_path', 'mask_weight']
     df = pd.DataFrame(list(zip(rel_paths, accuracies)), columns =headers)
     df.to_csv(os.path.join(data_root, 'ledger.csv'))
 
