@@ -81,6 +81,11 @@ def main(config):
     if config.mode == 'Test':
         trainer = pl.Trainer(accelerator='gpu', devices=1, auto_select_gpus=True, log_every_n_steps = 1)
         ckpt_path = os.path.join(config.models_root, config.experiment_name, config.best_path) + '.ckpt'
+
+        # verify checkpoint exists, if not try main Models location
+        if not os.path.exists(ckpt_path):
+            ckpt_path =  os.path.join(config.models_root, config.best_path) + '.ckpt'
+
         trainer.test(model, ckpt_path=ckpt_path)
 
 

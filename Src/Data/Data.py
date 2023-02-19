@@ -83,9 +83,12 @@ class dataset_generator(data.Dataset):
     
     def __getitem__(self, idx):
 
+        # dataset root
+        dataset = self.im_dataset[idx]
+
         # get the image
         im_path = self.im_paths[idx]
-        img = cv.imread(im_path)
+        img = cv.imread(os.path.join(dataset, im_path))
 
         # if we have a bbox AND flag is true, crop face
         face_bbox = self.im_face_bboxes[idx]
@@ -110,7 +113,7 @@ class dataset_generator(data.Dataset):
 
         else:
             # ID
-            label_id = torch.tensor(self.im_labels_id[idx] + self.ID_map[self.im_dataset[idx]]).long()
+            label_id = torch.tensor(self.im_labels_id[idx] + self.ID_map[dataset]).long()
             id_valid = torch.tensor(1).long()
 
         # liveliness
@@ -123,11 +126,21 @@ class dataset_generator(data.Dataset):
         net_inputs = {'image' : img}
         labels = {'id' : label_id, 'liveliness' : label_liveliness, 'synthetic' : label_synthetic, 'id_valid': id_valid}
 
+
+        # extra the meta data
+        attack_class = self.im_labels_attack_class[idx]
+        location = self.im_labels_location[idx]
+
+        meta_data = {'im_path' : im_path, 'attack_class' : attack_class, 'location' : location, 'dataset' : dataset}
+
         # if we need seg masks, extract and calcualte
         if len(self.colors) and self.seg_mask_paths[idx] != None and 'None' not in self.seg_mask_paths[idx]:
 
-            mask = cv.imread(self.seg_mask_paths[idx])
+            mask_path = self.seg_mask_paths[idx]
+            mask = cv.imread(os.path.join(dataset, mask_path))
             mask = cv.cvtColor(mask, cv.COLOR_BGR2RGB)
+
+            meta_data['mask_path'] = mask_path
 
             # apply crop where appropriate
             if self.face_crop == 'yes' and face_bbox != None:
@@ -147,12 +160,6 @@ class dataset_generator(data.Dataset):
             #mask = self.transform(mask)
             labels['seg_mask'] = mask
             labels['seg_mask_valid'] = torch.tensor(0).long()
-
-        # extra the meta data
-        attack_class = self.im_labels_attack_class[idx]
-        location = self.im_labels_location[idx]
-
-        meta_data = {'im_path' : im_path, 'attack_class' : attack_class, 'location' : location}
 
         #print(labels)
 
@@ -202,7 +209,7 @@ class dataset_generator(data.Dataset):
                 continue
 
             self.im_dataset.append(dataset)
-            self.im_paths.append(os.path.join(dataset, row['image_path']))
+            self.im_paths.append(row['image_path'])
             self.im_labels_id.append(row['id'])
             self.im_labels_liveliness.append(1 if row['liveliness'] == 'live' else 0)
 
@@ -217,7 +224,7 @@ class dataset_generator(data.Dataset):
             self.im_face_bboxes.append(bbox)
 
             # ledger specific information
-            self.seg_mask_paths.append(os.path.join(dataset, row['mask_path']) if 'mask_path' in columns else None)
+            self.seg_mask_paths.append(row['mask_path'] if 'mask_path' in columns else None)
             self.im_labels_attack_class.append(row['attack_class'] if 'attack_class' in columns else 'Unknown')
             self.im_labels_location.append(row['location'] if 'location' in columns else 'Unknown')
             self.im_labels_synthetic.append(0 if 'synthetic' in columns and row['synthetic'] == 'synethic' else 1)

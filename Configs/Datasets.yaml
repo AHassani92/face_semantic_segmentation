@@ -17,14 +17,15 @@ val :
     split: test 
 
 test :
-  mut1ny_head_segmentation_pro_v2 :
-    split: test 
+  lfw:
+    split: all
 
 
 num_seg_classes:
   mut1ny_head_segmentation_pro_v2: 19
 
 num_IDs:
+  lfw:  5749
   lfw-deepfunneled: 5749
   mut1ny_head_segmentation_pro_v2: 85
   MS_Celeb_1K : 1000

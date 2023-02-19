@@ -6,6 +6,7 @@ from glob import glob
 import multiprocessing as mp
 import tqdm
 import pandas as pd
+import warnings
 
 # helper function to encode the segmap as logits
 # necessary to properly estimate uniquness 
@@ -48,7 +49,7 @@ def process_image_mp(im_path):
         num_centers = len(np.unique(im))
         
         # fit the distribution based upon number of unique values
-        kmeans = KMeans(n_clusters=num_centers)
+        kmeans = KMeans(n_clusters=num_centers, n_init = 10)
         kmeans.fit(im)
 
         # normalize the score
@@ -63,6 +64,7 @@ def process_image_mp(im_path):
 # main program
 def main(data_root):
 
+    # warnings.filterwarnings("ignore")
     # set the local database root
     proj_root = os.getcwd()
 
@@ -74,7 +76,10 @@ def main(data_root):
 
     # setup multi-processing
     pool = mp.Pool(mp.cpu_count())
-    mp.freeze_support()
+
+    # necessary for mp with windows
+    if os.name == 'nt':
+        mp.freeze_support()
 
     # iterate through dataset and get mask paths
     rel_paths = []
@@ -83,7 +88,6 @@ def main(data_root):
         # visualizer
         print(person, count)
         
-
         # set the local directory
         os.chdir(os.path.join(data_root, person))
 
@@ -114,5 +118,6 @@ def main(data_root):
 
 if __name__ == "__main__":
 
-    data_root = 'F:\\Data\\LFW Labels - mut1ny_head_segmentation_pro_v2-deeplab-resnet50-epoch=27\\lfw'
+    # data_root = 'F:\\Data\\LFW Labels - mut1ny_head_segmentation_pro_v2-deeplab-resnet50-epoch=27\\lfw'
+    data_root = '/s/ahassa37/code_academic/face_semantic_segmentation/Test/'
     main(data_root)

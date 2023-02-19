@@ -31,8 +31,10 @@ from Src.Utils.DVP import write_eval
 from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 
+
 # helper function to parallelize decode and writing
 def annotate_mask(mask, img_width, img_height, colors, image_name) -> None:
+
     mask_color = decode_segmap(mask, img_width, img_height, colors)
 
     # convert output from RGB to BGR to support opencv
@@ -201,6 +203,15 @@ class Face_Seg(pl.LightningModule):
         if not os.path.exists(self.test_root):
             os.makedirs(self.test_root)
 
+        # generate the annotation dirs if appropraite
+        if self.annotate:
+
+            # iterate through and make dataset dirs
+            for annotate_dir in self.datasets['datasets_test']:
+                annotate_dir = os.path.join(self.test_root, annotate_dir)
+                if not os.path.exists(annotate_dir):
+                    os.makedirs(annotate_dir)
+
         # define the test report
         self.test_report = os.path.join(self.test_root, self.architecture + '_eval.csv')
 
@@ -226,9 +237,22 @@ class Face_Seg(pl.LightningModule):
             masks = []
             names = []
             for num, mask in enumerate(mask_logits.cpu().detach()):
-                image_name = os.path.join(self.test_root, 'test_image_' + str(batch_idx + num).zfill(4) + '.png')
-                #self.annotate_mask(mask.numpy(), self.img_width, self.img_height, self.colors, image_name)
+
+                # store mask
                 masks.append(mask.numpy())
+
+                # pre-process the meta data
+                im_name = meta_data['im_path'][num].split('/')
+                dataset_name = meta_data['dataset'][num].split('/')
+                annotate_dir = os.path.join(self.test_root, dataset_name[-1])
+                person_dir = os.path.join(annotate_dir, im_name[0], '')
+
+                # verify directory exists -> must be done here, parallelizaton outpaces disk writing
+                if not os.path.exists(person_dir):
+                    os.makedirs(person_dir)
+
+                # generate the full path
+                image_name = os.path.join(person_dir, im_name[1])
                 names.append(image_name)
 
             self.pool.starmap(annotate_mask, zip(masks, repeat(self.img_width, self.batch_size_test), repeat(self.img_height, self.batch_size_test), repeat(self.colors, self.batch_size_test), names))
@@ -276,20 +300,6 @@ class Face_Seg(pl.LightningModule):
         test_dataset = self.init_data(mode = 'test')
 
         return DataLoader(test_dataset, batch_size = self.batch_size_test, shuffle = False, num_workers= self.num_cpus, drop_last=True)
-
-    # helper function to parallelize decode and writing
-    def annotate_mask(self, mask, image_name) -> None:
-        # mask_color = decode_segmap(mask, self.img_width, self.img_height, self.colors)
-
-        mask_rgb = np.zeros((img_height, img_width, 3), dtype = np.uint8)
-        for y in range(img_height):
-            for x in range(img_width):
-                mask_rgb[y,x] = colors[mask_logits[y,x]]
-
-
-        # convert output from RGB to BGR to support opencv
-        mask_rgb = cv.cvtColor(mask_rgb, cv.COLOR_RGB2BGR)         
-        cv.imwrite(image_name, mask_rgb)
 
 
     # helper function to parallelize decode and writing
