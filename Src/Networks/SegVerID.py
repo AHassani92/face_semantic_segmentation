@@ -161,28 +161,67 @@ class SegVerID(nn.Module):
         return embeddings        
     
 
+    def prune_labels(prediction, labels):
+
+        # verify we have labels
+        id_valid = torch.sum(labels['id_valid']) > 0
+        seg_mask_valid = torch.sum(labels['seg_mask_valid']) > 0
+
+        prediction['seg_mask'], labels['seg_mask'] = sample_valid_labels(prediction['seg_mask'], labels['seg_mask'], mask = labels['seg_mask_valid'])
+        prediction['id'], labels['id'] = sample_valid_labels(prediction[''], labels[''], mask = labels[''])
+
     def loss(self, prediction, labels):
+
+        # verify we have labels
+        id_valid = torch.sum(labels['id_valid']) > 0
+        seg_mask_valid = torch.sum(labels['seg_mask_valid']) > 0
+
 
         # mask out missing labels if necessary
         if self.missing_labels_mask:
-            prediction['seg_mask'], labels['seg_mask']= sample_valid_labels(prediction['seg_mask'], labels['seg_mask'])
-            prediction['id'], labels['id'] = sample_valid_labels(prediction['id'], labels['id'])
 
-        # compute segmentation loss
-        loss_seg = F.cross_entropy(prediction['seg_mask'], labels['seg_mask'])
+            if seg_mask_valid:
+                # have to make a copy because it screws up the accuracy metric later
+                seg_inference, seg_mask = sample_valid_labels(prediction['seg_mask'], labels['seg_mask'], mask = labels['seg_mask_valid'])
+                loss_seg = F.cross_entropy(seg_inference, seg_mask)
+            else:
+                loss_seg = 0
+            if id_valid:
+                id_inference, ids = sample_valid_labels(prediction['id'], labels['id'], mask = labels['id_valid'])
 
-        # calculate the ID embeddings loss
-        logits = self.ArcMargin(prediction['id'], labels['id'])
-        loss_ID = self.FocalLoss(logits, labels['id'])
+                logits = self.ArcMargin(id_inference, ids)
+                loss_ID = self.FocalLoss(logits, ids)
+            else:
+                loss_ID = 0
+
+
+        else:
+            # compute segmentation loss
+            loss_seg = F.cross_entropy(prediction['seg_mask'], labels['seg_mask'])
+
+            # calculate the ID embeddings loss
+            logits = self.ArcMargin(prediction['id'], labels['id'])
+            loss_ID = self.FocalLoss(logits, labels['id'])         
 
         # find the combined weighted loss
-        if loss_seg > 0.5:
-            loss = loss_ID + 10*loss_seg
-        if loss_seg > 0.3:
-            loss = loss_ID + 5*loss_seg
-        else:
-            loss = loss_ID + 2.5*loss_seg
+        # if loss_seg > 0.5:
+        #     loss = loss_ID + 10*loss_seg
+        # if loss_seg > 0.3:
+        #     loss = loss_ID + 5*loss_seg
+        # else:
+        #     loss = loss_ID + 2.5*loss_seg
 
+        # if loss_ID > 10:
+        #     loss = loss = loss_ID + 0*loss_seg
+        # else:
+        #     loss = loss_ID + loss_seg
+
+        # if loss_seg = 0:
+        #     loss = 0.1*loss_ID + loss_seg
+        # else:
+        #     loss = loss_ID + loss_seg
+        
+        loss = loss_ID*(0.1+ torch.mean(labels['seg_mask_valid'].float())) + loss_seg*(torch.mean(labels['id_valid'].float()))
         # combined loss for fixed task loss weights
         # loss = (loss_seg * self.seg_weight) + (loss_ID * self.id_weight)
 
@@ -190,22 +229,70 @@ class SegVerID(nn.Module):
         
     # add custom logic for the score functionality
     def accuracy(self, prediction, labels):
+
+        # verify we have labels
+        id_valid = torch.sum(labels['id_valid']) > 0
+        seg_mask_valid = torch.sum(labels['seg_mask_valid']) > 0
+
         # mask out missing labels if necessary
         if self.missing_labels_mask:
-            prediction['id'], labels['id'] = sample_valid_labels(prediction['id'], labels['id'])
-            prediction['seg_mask'], labels['seg_mask']= sample_valid_labels(prediction['seg_mask'], labels['seg_mask'])
 
-        # convert the predictions into a score
-        mask_logits = torch.argmax(prediction['seg_mask'], axis = 1)
+            if seg_mask_valid:
+                # have to make a copy because it screws up the accuracy metric later
+                seg_inference, seg_mask = sample_valid_labels(prediction['seg_mask'], labels['seg_mask'], mask = labels['seg_mask_valid'])
+                
+                mask_logits = torch.argmax(seg_inference, axis = 1) 
+                acc_seg = mask_logits == seg_mask
+                acc_seg = torch.sum(acc_seg, dim= [1,2]).float()/(acc_seg.shape[1]*acc_seg.shape[2])
 
-        # calculate the ID embeddings accuracy
-        logits = self.ArcMargin(prediction['id'], labels['id'])
-        logits = torch.argmax(logits, axis = 1)
-        acc_ID = labels['id'] == logits
+            else:
+                acc_seg = torch.zeros(prediction['seg_mask'].shape)
+            if id_valid:
+                # have to make a copy because it screws up the accuracy metric later
+                id_inference, ids = sample_valid_labels(prediction['id'], labels['id'], mask = labels['id_valid'])
 
-        # calculate the segmentation accuracy
-        acc_seg = mask_logits == labels['seg_mask']
-        acc_seg = torch.sum(acc_seg, dim= [1,2]).float()/(acc_seg.shape[1]*acc_seg.shape[2])
+
+                logits = self.ArcMargin(id_inference, ids)
+                logits = torch.argmax(logits, axis = 1)
+                acc_ID = ids == logits
+
+            else:
+                acc_ID = torch.zeros(prediction['id'].shape)
+
+
+        else:
+            # compute segmentation accuracy
+            mask_logits = torch.argmax(prediction['seg_mask'], axis = 1) 
+
+            # calculate the segmentation accuracy
+            acc_seg = mask_logits == labels['seg_mask']
+            acc_seg = torch.sum(acc_seg, dim= [1,2]).float()/(acc_seg.shape[1]*acc_seg.shape[2])
+
+            # calculate the ID accuracy
+            logits = self.ArcMargin(prediction['id'], labels['id'])
+            logits = torch.argmax(logits, axis = 1)
+            acc_ID = labels['id'] == logits
+
+        # # convert the predictions into a score
+        # if seg_mask_valid:
+        #     mask_logits = torch.argmax(prediction['seg_mask'], axis = 1) 
+
+        #     # calculate the segmentation accuracy
+        #     acc_seg = mask_logits == labels['seg_mask']
+        #     acc_seg = torch.sum(acc_seg, dim= [1,2]).float()/(acc_seg.shape[1]*acc_seg.shape[2])
+
+        # else:
+        #     acc_seg = torch.zeros(prediction['seg_mask'].shape)
+
+        # # calculate the ID embeddings accuracy
+        # if id_valid:
+        #     logits = self.ArcMargin(prediction['id'], labels['id'])
+        #     logits = torch.argmax(logits, axis = 1)
+        #     acc_ID = labels['id'] == logits
+
+        # else:
+        #     acc_ID = torch.zeros(prediction['id'].shape)
+
 
         acc = {'seg_mask' : acc_seg, 'id' : acc_ID}
 

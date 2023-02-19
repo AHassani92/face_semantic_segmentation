@@ -4,10 +4,17 @@
 train : 
   mut1ny_head_segmentation_pro_v2 :
     split: train
+
+  mut1ny_head_segmentation_pro_v2 :
+    split: val
+
     
 val :
+  # lfw-deepfunneled :
+  #   split: all
+
   mut1ny_head_segmentation_pro_v2 :
-    split: val    
+    split: test 
 
 test :
   mut1ny_head_segmentation_pro_v2 :
@@ -18,5 +25,9 @@ num_seg_classes:
   mut1ny_head_segmentation_pro_v2: 19
 
 num_IDs:
+  lfw-deepfunneled: 5749
   mut1ny_head_segmentation_pro_v2: 85
-  MS1M: 85742
+  MS_Celeb_1K : 1000
+  MS1M : 85742
+  MS_Dig_1M_72: 10000
+  MS_Dig_1M_5: 66666

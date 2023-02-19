@@ -25,9 +25,18 @@ class Configs(object):
 
 
 		# experiment configuration
-		self.experiment_name = 'SegID_experimentation'
-		self.model_type = 'Face_Seg_ID' # ['Face_Detect', 'Face_ID', 'Face_PAD', 'Face_Seg', 'Face_Seg_ID']
-		assert self.model_type in ['Face_Detect', 'Face_ID', 'Face_PAD', 'Face_Seg', 'Face_Seg_ID']
+		self.experiment_name = 'Iterative_Annotation'
+		self.model_type = 'Face_Seg' # ['Face_Detect', 'Face_ID', 'Face_PAD', 'Face_Seg']
+		assert self.model_type in ['Face_Detect', 'Face_ID', 'Face_PAD', 'Face_Seg']
+
+		# model builder configs
+		self.architecture = 'FaceSeg' 
+
+		# verify the architecture supports the model type
+		if self.model_type == 'Face_Seg':
+			assert self.architecture in ['FaceSeg']
+		elif self.model_type == 'Face_ID':
+			assert self.architecture in ['SegID', 'SegVerID', 'SynID']
 
 		# use datasets yaml to setup the dataset configuration
 		self.get_datasets_parms()
@@ -37,7 +46,7 @@ class Configs(object):
 		self.location = 'all' # ['all', 'interior', 'exterior']
 		self.liveliness = 'live' # ['all', 'live', 'spoof']
 		self.synthetic = 'yes' # ['yes', 'no']
-		self.missing_labels = False # use when have MTL problems and partially missing annotations, ['yes', 'no']
+		self.missing_labels = False # use when have MTL problems and partially missing annotations, [True, False]
 
 
 		# training parameters
@@ -53,19 +62,11 @@ class Configs(object):
 		self.max_epochs = 150 # maximum number of training epochs
 		self.patience_epochs = 10 # how many training iterations before early stopping
 
+		# testing parameters
+		self.annotate = True # for semantic segmentation testing only
+
 		# seg parameters: color map
 		self.colors = [[0, 0, 0],[0, 0, 255],[0, 255, 0],[255, 0, 0],[128, 128, 128],[0, 255, 255],[255, 0, 255],[255, 255, 0],[255, 255, 255],[192, 192, 255],[128, 128, 0], [0, 128, 0], [128, 0, 128], [64, 64, 0]]
-
-
-		# model builder configs
-		# architecture options: ['Texture', 'DGFA', 'CDCN', 'LGSC', 'SAIPS']
-		self.architecture = 'SegVerID' 
-
-		# verify the architecture supports the model type
-		if self.model_type == 'Face_Seg':
-			assert self.architecture in ['FaceSeg']
-		elif self.model_type == 'Face_Seg_ID':
-			assert self.architecture in ['SegID', 'SegVerID']
 
 		self.get_architecture_params()
 
@@ -118,16 +119,18 @@ class Configs(object):
 		self.accuracy_keys = configs_args[self.model_type]['accuracy_keys']
 		self.encoder = configs_args[self.model_type]['encoder']
 		self.pretrain_path = configs_args[self.model_type]['pretrain']
-		self.best_path = self.model_type + '_' + self.architecture + '_' + self.encoder  +'_best'
 
-		if self.model_type == 'Face_Seg':
-			self.decoder = configs_args[self.model_type]['decoder']
-			assert self.decoder in ['none', 'unet', 'unetpp', 'deeplab']
-		elif self.model_type == 'Face_Seg_ID':
-			self.decoder = configs_args[self.model_type]['decoder']
-			assert self.decoder in ['none', 'unet', 'unetpp', 'deeplab']			
-		else:
-			self.decoder = None
+		self.decoder = configs_args[self.model_type]['decoder'] if 'decoder' in configs_args[self.model_type] else 'none'
+		assert self.decoder in ['none', 'unet', 'unetpp', 'deeplab']
+
+
+		# automatically generate name from design and dataset
+		self.best_path = self.model_type + '_' + self.architecture + '_' + self.encoder 
+
+		if self.decoder != 'none': self.best_path += '_' + self.decoder
+
+		for dataset in set(self.datasets['datasets_train']):
+			self.best_path += '_' + dataset 
 
 		# set the sizes if not defined
 		if configs_args[self.model_type]['img_size'] != 'None':

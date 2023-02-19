@@ -2,7 +2,7 @@
 # idea is to regularize the embeddings by also understanding synthetic vs real imagery
 
 # model type -> face ID verification
-Face_Seg_ID: 
+Face_ID: 
   input_keys : ['image']
   loss_keys : ['id', 'seg_mask']
   accuracy_keys : ['id', 'seg_mask']

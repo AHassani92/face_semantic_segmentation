@@ -1,1 +1,1 @@
-Please locate your datasets here. See Src/Data for examples on how to create the dataset object and generate the csv file.
+Please locate your datasets here. See Src/Data for examples on how to create the dataset object and generate the csv file. Examples include the Mut1ny semantic segmentation and labelled faces in the wild datasets.

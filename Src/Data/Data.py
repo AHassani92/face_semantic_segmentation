@@ -13,8 +13,6 @@ import math
 # function to map logical values to color
 def decode_segmap(mask_logits, img_width, img_height, colors):
 
-    mask_logits = np.argmax(mask_logits, axis = 0)
-
     # map over the values using color codes
     mask_rgb = np.zeros((img_height, img_width, 3), dtype = np.uint8)
     for y in range(img_height):
@@ -104,26 +102,59 @@ class dataset_generator(data.Dataset):
 
         # get the basic labels
         # note that ID is offset by dataset map to avoid collisions
-        label_id = self.im_labels_id[idx] + self.ID_map[self.im_dataset[idx]]
-        label_liveliness = self.im_labels_liveliness[idx]
-        label_synthetic = self.im_labels_synthetic[idx]
+        if self.im_labels_id[idx] == -1:
 
-        if self.seg_mask_paths[idx] != None:
-            mask = cv.imread(self.seg_mask_paths[idx])
-            mask = cv.cvtColor(mask, cv.COLOR_BGR2RGB)
-            mask = cv.resize(mask, (self.img_width, self.img_height), interpolation= cv.INTER_NEAREST)
-            mask = self.encode_segmap(mask)
-            assert(mask.shape == (self.img_width, self.img_height))
+            # id
+            label_id = torch.tensor(-1).long()
+            id_valid = torch.tensor(0).long()
+
+        else:
+            # ID
+            label_id = torch.tensor(self.im_labels_id[idx] + self.ID_map[self.im_dataset[idx]]).long()
+            id_valid = torch.tensor(1).long()
+
+        # liveliness
+        label_liveliness =torch.tensor(self.im_labels_liveliness[idx]).long()
+
+        # synthetic
+        label_synthetic = torch.tensor(self.im_labels_synthetic[idx]).long()
 
         # base outputs
         net_inputs = {'image' : img}
-        labels = {'id' : label_id, 'liveliness' : label_liveliness, 'synthetic' : label_synthetic, 'seg_mask' : mask}
+        labels = {'id' : label_id, 'liveliness' : label_liveliness, 'synthetic' : label_synthetic, 'id_valid': id_valid}
+
+        # if we need seg masks, extract and calcualte
+        if len(self.colors) and self.seg_mask_paths[idx] != None and 'None' not in self.seg_mask_paths[idx]:
+
+            mask = cv.imread(self.seg_mask_paths[idx])
+            mask = cv.cvtColor(mask, cv.COLOR_BGR2RGB)
+
+            # apply crop where appropriate
+            if self.face_crop == 'yes' and face_bbox != None:
+                mask = mask[face_bbox['face_top']: face_bbox['face_bottom'], face_bbox['face_left']: face_bbox['face_right']]
+
+            mask = cv.resize(mask, (self.img_width, self.img_height), interpolation= cv.INTER_NEAREST)
+            mask = self.encode_segmap(mask)
+            assert(mask.shape == (self.img_width, self.img_height))
+            #mask = self.transform(mask)
+
+            labels['seg_mask'] = mask
+            labels['seg_mask_valid'] = torch.tensor(1).long()
+
+        else:
+
+            mask = np.zeros((self.img_width, self.img_height), dtype = np.int64)
+            #mask = self.transform(mask)
+            labels['seg_mask'] = mask
+            labels['seg_mask_valid'] = torch.tensor(0).long()
 
         # extra the meta data
         attack_class = self.im_labels_attack_class[idx]
         location = self.im_labels_location[idx]
 
         meta_data = {'im_path' : im_path, 'attack_class' : attack_class, 'location' : location}
+
+        #print(labels)
 
         return net_inputs, labels, meta_data
     

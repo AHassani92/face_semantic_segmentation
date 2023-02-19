@@ -30,27 +30,42 @@ def main(config):
 
     if config.model_type == 'Face_Seg':
         model = Face_Seg(config)
+
+        # auto save if best model
+        checkpoint_callback = pl.callbacks.ModelCheckpoint(
+            dirpath = os.path.join(config.models_root, config.experiment_name),
+            filename = config.best_path,
+            save_top_k = 1,
+            verbose = True, 
+            monitor = 'loss_val',
+            mode = 'min'
+        )
+
+        # stop if loss has not improved for 5 epochs
+        early_stopping = EarlyStopping(
+            monitor="loss_val",
+            min_delta=0.001,
+            patience=5)
+
     elif config.model_type == 'Face_ID':
         model = Face_ID(config)
-    elif config.model_type == 'Face_Seg_ID':
-        model = Face_Seg(config)
+
+        # auto save if best model
+        checkpoint_callback = pl.callbacks.ModelCheckpoint(
+            dirpath = os.path.join(config.models_root, config.experiment_name),
+            filename = config.best_path,
+            save_top_k = 1,
+            verbose = True, 
+            monitor = 'acc_val',
+            mode = 'max'
+        )
+
+        # stop if loss has not improved for 5 epochs
+        early_stopping = EarlyStopping(
+            monitor="acc_val",
+            min_delta=0.001,
+            patience=config.patience_epochs)
         
-    # auto save if best model
-    checkpoint_callback = pl.callbacks.ModelCheckpoint(
-        dirpath = 'models/checkpoints_mut1ny/', #checkpoints is for KITT
-        filename= config.best_path,
-        save_top_k = 1,
-        verbose = True, 
-        monitor = 'loss_val',
-        mode = 'min'
-    )
-
-    # stop if loss has not improved for 5 epochs
-    early_stopping = EarlyStopping(
-        monitor="loss_val",
-        min_delta=0.001,
-        patience=10)
-
 
     # for training
     if config.mode == 'Train':
@@ -65,7 +80,7 @@ def main(config):
     # for testing
     if config.mode == 'Test':
         trainer = pl.Trainer(accelerator='gpu', devices=1, auto_select_gpus=True, log_every_n_steps = 1)
-        ckpt_path = os.path.join(config.models_root, config.best_check_point)
+        ckpt_path = os.path.join(config.models_root, config.experiment_name, config.best_path) + '.ckpt'
         trainer.test(model, ckpt_path=ckpt_path)
 
 

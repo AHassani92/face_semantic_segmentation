@@ -12,6 +12,8 @@ import torchvision
 import pytorch_lightning as pl
 import numpy as np
 import random
+from itertools import repeat
+
 
 # segmap decoding
 import cv2 as cv
@@ -28,6 +30,14 @@ from Src.Utils.DVP import write_eval
 
 from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
+
+# helper function to parallelize decode and writing
+def annotate_mask(mask, img_width, img_height, colors, image_name) -> None:
+    mask_color = decode_segmap(mask, img_width, img_height, colors)
+
+    # convert output from RGB to BGR to support opencv
+    mask_color = cv.cvtColor(mask_color, cv.COLOR_RGB2BGR)         
+    cv.imwrite(image_name, mask_color)
 
 
 # helper function to automate key parsing
@@ -78,6 +88,7 @@ class Face_Seg(pl.LightningModule):
         self.batch_size_train = config.batch_size_train
         self.batch_size_test = config.batch_size_test
         self.num_cpus = config.num_cpus
+        self.annotate = config.annotate
 
         # data utilities
         self.data_root = config.data_root
@@ -90,6 +101,8 @@ class Face_Seg(pl.LightningModule):
         self.synthetic = config.synthetic
         self.test_root = config.test_root
         self.experiment_name = config.experiment_name
+        self.pairwise_ledger = None
+        self.verification_pass = True
 
 
         # define network optimizations
@@ -191,68 +204,49 @@ class Face_Seg(pl.LightningModule):
         # define the test report
         self.test_report = os.path.join(self.test_root, self.architecture + '_eval.csv')
 
+        # multiprocessing pool
+        self.pool = mp.Pool(mp.cpu_count())
+
     def test_step(self, batch, batch_idx):
 
-        img, mask = batch
-        img = img.float()
-        mask = mask.long()
-        out = self.forward(img)
-        loss_test = F.cross_entropy(out, mask, ignore_index = 250)
+        # calculate the loss
+        net_inputs, labels, meta_data = batch
 
+        # network inference
+        inference = self.forward(parse_data(net_inputs, self.input_keys))
 
-        #acc_test = self.accuracy(out, mask)
-
-        if self.test_vis:
+        if self.annotate:
             #mask_color = self.decode_segmap(out)
             batch_idx = batch_idx*self.batch_size_test
             #mask_logits_batch = mask_logits_batch.cpu().detach()#.numpy()
+
+            mask_logits = torch.argmax(inference['seg_mask'], axis = 1)
         
             # multiprocessing style
-            pool = mp.Pool(mp.cpu_count())
-            for num, mask in enumerate(out.cpu().detach()):
-                image_name = os.path.join(self.test_dir, 'test_image_' + str(batch_idx + num).zfill(4) + '.png')
-                #self.decode_helper(mask, self.img_width, self.img_height, self.colors, image_name)
-                pool.apply_async(self.vis_helper, args=(mask.numpy(), self.img_width, self.img_height, self.colors, image_name))
+            masks = []
+            names = []
+            for num, mask in enumerate(mask_logits.cpu().detach()):
+                image_name = os.path.join(self.test_root, 'test_image_' + str(batch_idx + num).zfill(4) + '.png')
+                #self.annotate_mask(mask.numpy(), self.img_width, self.img_height, self.colors, image_name)
+                masks.append(mask.numpy())
+                names.append(image_name)
 
-            pool.close()
-            pool.join()
+            self.pool.starmap(annotate_mask, zip(masks, repeat(self.img_width, self.batch_size_test), repeat(self.img_height, self.batch_size_test), repeat(self.colors, self.batch_size_test), names))
+
+        else:
+            # calculate the loss
+            loss_test = self.loss(inference, parse_data(labels, self.loss_keys))
+            #loss_test = F.cross_entropy(out, mask, ignore_index = 250)
+            self.log('loss_test', loss_test)
 
 
-        self.log('loss_test', loss_test)
-        return {'loss_test' : loss_test}
+    def test_epoch_end(self, outputs) -> None:
+        """
+        This function accumulates all the test metrics and writes them to disk in the results folder.
+        """
 
-    # def test_epoch_end(self, outputs) -> None:
-    #     """
-    #     This function accumulates all the test metrics and writes them to disk in the results folder.
-    #     """
+        self.pool.close()
         
-    #     # extract the test outputs into a simple dictionary
-    #     outputs = epoch_end_extract(outputs)
-
-    #     # calculate the pairwise distance
-    #     embeddings = torch.cat(outputs['embeddings'], dim=0) 
-    #     labels = torch.cat(outputs['labels'], dim=0)
-
-    #     # compute the similarity metrics
-    #     self.pairwise_ledger = generate_pairwise_ledger(labels) 
-    #     similarities, targets = pairwise_distance_ledger(embeddings, labels, self.pairwise_ledger, samples = 100000)
-
-    #     # need to break out TP, FP, TN, FN into stats
-    #     stats = pairwise_accuracy(similarities.cpu().numpy(), targets.cpu().numpy())
-
-    #     self.log('acc_test', stats['accuracy'], prog_bar=True, logger=True)
-    #     self.log('th_test', stats['threshold'], prog_bar=True, logger=True)
-
-    #     # statistics = accuracy_rates(sum(outputs['TN']), sum(outputs['FN']), sum(outputs['TP']), sum(outputs['FP']))
-    #     # attack_statistics = attack_class_rates(outputs)
-    #     # self.log_dict(statistics, batch_size=self.batch_size_test)
-    #     #self.log_dict(attack_statistics, batch_size=self.batch_size_test)
-
-    #     # define the ledger file and store it
-        
-    #     statistics = {**statistics, **attack_statistics}
-    #     name = 'Cross validation ' + str(self.cross_val) if self.cross_val != None else 'Base'
-    #     write_eval(self.test_report, eval = statistics, name = name)
 
     def configure_optimizers(self):
         opt = torch.optim.Adam(self.net.parameters(), lr = self.learning_rate)
@@ -284,14 +278,24 @@ class Face_Seg(pl.LightningModule):
         return DataLoader(test_dataset, batch_size = self.batch_size_test, shuffle = False, num_workers= self.num_cpus, drop_last=True)
 
     # helper function to parallelize decode and writing
-    def vis_helper(self, mask, img_width, img_height, colors, image_name):
-        mask_color = decode_segmap(mask, img_width, img_height, colors)
+    def annotate_mask(self, mask, image_name) -> None:
+        # mask_color = decode_segmap(mask, self.img_width, self.img_height, self.colors)
+
+        mask_rgb = np.zeros((img_height, img_width, 3), dtype = np.uint8)
+        for y in range(img_height):
+            for x in range(img_width):
+                mask_rgb[y,x] = colors[mask_logits[y,x]]
+
+
         # convert output from RGB to BGR to support opencv
-        mask_color = cv.cvtColor(mask_color, cv.COLOR_RGB2BGR)         
-        cv.imwrite(image_name, mask_color)
+        mask_rgb = cv.cvtColor(mask_rgb, cv.COLOR_RGB2BGR)         
+        cv.imwrite(image_name, mask_rgb)
 
 
-
+    # helper function to parallelize decode and writing
+    def annotate_test(self, image_name) -> None:
+        # mask_color = decode_segmap(mask, self.img_width, self.img_height, self.colors)
+        print(image_name)
 
 class Face_ID(pl.LightningModule):
     def __init__(self, config):
@@ -303,6 +307,7 @@ class Face_ID(pl.LightningModule):
         self.loss_keys = config.loss_keys
         self.accuracy_keys = config.accuracy_keys
         self.missing_labels = config.missing_labels
+        self.colors = config.colors if config.architecture == 'SegVerID' else []
 
         # fetch the model
         if self.architecture == 'Texture':
@@ -314,7 +319,8 @@ class Face_ID(pl.LightningModule):
         elif self.architecture == 'SynID':
             self.net = SynID(encoder = config.encoder, num_classes = config.datasets['num_IDs'], missing_labels_mask = self.missing_labels)
 
-
+        elif self.architecture == 'SegVerID':
+            self.net = SegVerID(encoder = config.encoder, decoder = config.decoder, num_seg_classes = len(self.colors), num_id_classes = config.datasets['num_IDs'], missing_labels_mask = self.missing_labels)
 
 
         # set the loss and accuracy methods
@@ -374,13 +380,13 @@ class Face_ID(pl.LightningModule):
 
         # for train mode, load only train and val data
         if mode == 'train':
-            return dataset_generator(data_root = self.data_root, datasets = self.datasets['datasets_train'], splits = self.datasets['splits_train'], img_width = self.img_width,  img_height = self.img_height, face_crop = self.face_crop, liveliness = self.liveliness, location = self.location, synthetic = self.synthetic, missing_labels = self.missing_labels, cross_val = self.cross_val)
+            return dataset_generator(data_root = self.data_root, datasets = self.datasets['datasets_train'], splits = self.datasets['splits_train'], seg_colors = self.colors, img_width = self.img_width,  img_height = self.img_height, face_crop = self.face_crop, liveliness = self.liveliness, location = self.location, synthetic = self.synthetic, missing_labels = self.missing_labels, cross_val = self.cross_val)
 
         elif mode == 'val':
-            return dataset_generator(data_root = self.data_root, datasets = self.datasets['datasets_val'], splits = self.datasets['splits_val'], img_width = self.img_width,  img_height = self.img_height, face_crop = self.face_crop, liveliness = self.liveliness, location = self.location, synthetic = self.synthetic, missing_labels = self.missing_labels, cross_val = self.cross_val)
+            return dataset_generator(data_root = self.data_root, datasets = self.datasets['datasets_val'], splits = self.datasets['splits_val'], seg_colors = self.colors, img_width = self.img_width,  img_height = self.img_height, face_crop = self.face_crop, liveliness = self.liveliness, location = self.location, synthetic = self.synthetic, missing_labels = self.missing_labels, cross_val = self.cross_val)
 
         elif mode == 'test':
-            return dataset_generator(data_root = self.data_root, datasets = self.datasets['datasets_test'], splits = self.datasets['splits_test'], img_width = self.img_width,  img_height = self.img_height, face_crop = self.face_crop, liveliness = self.liveliness, location = self.location, synthetic = self.synthetic, missing_labels = self.missing_labels, cross_val = self.cross_val)
+            return dataset_generator(data_root = self.data_root, datasets = self.datasets['datasets_test'], splits = self.datasets['splits_test'], seg_colors = self.colors, img_width = self.img_width,  img_height = self.img_height, face_crop = self.face_crop, liveliness = self.liveliness, location = self.location, synthetic = self.synthetic, missing_labels = self.missing_labels, cross_val = self.cross_val)
 
 
     def verify(self):
@@ -399,11 +405,12 @@ class Face_ID(pl.LightningModule):
             inference = self.forward(parse_data(net_inputs, self.input_keys))
 
             # calculate the loss
-            loss = self.loss(inference, parse_data(labels, self.loss_keys))
+            #loss = self.loss(inference, parse_data(labels, self.loss_keys))
+            loss = self.loss(inference, labels)
 
             # # calculate the accuracy metrics
-            label_acc = parse_data(labels, self.accuracy_keys)
-            acc = self.accuracy(inference, label_acc)
+            #label_acc = parse_data(labels, self.accuracy_keys)
+            acc = self.accuracy(inference, labels)
 
             # # get the confusion matrix then convert to rates
             # metrics = confusion_matrix(acc.cpu().numpy(), torch.argmax(label_acc, axis = 1).cpu().numpy())
@@ -432,11 +439,12 @@ class Face_ID(pl.LightningModule):
         inference = self.forward(parse_data(net_inputs, self.input_keys))
 
         # calculate the loss
-        loss = self.loss(inference, parse_data(labels, self.loss_keys))
+        #loss = self.loss(inference, parse_data(labels, self.loss_keys))
+        loss = self.loss(inference, labels)
 
         # calculate the accuracy metrics
-        label_acc = parse_data(labels, self.accuracy_keys)
-        acc = self.accuracy(inference, label_acc)
+        #label_acc = parse_data(labels, self.accuracy_keys)
+        acc = self.accuracy(inference, labels)
 
         for keys in acc.keys():
             acc[keys] = float(sum(acc[keys])/self.batch_size_train)
@@ -471,22 +479,37 @@ class Face_ID(pl.LightningModule):
         embeddings = torch.cat(outputs['embeddings'], dim=0) 
         labels = torch.cat(outputs['labels'], dim=0)
 
-        # compute the simalirity ledger once to save one overall time
-        if self.pairwise_ledger == None:
-            self.pairwise_ledger = generate_pairwise_ledger(labels) 
-
-        #similarities, targets = pairwise_distance_ledger(embeddings, labels, self.pairwise_ledger, samples = 10000)
-        similarities, targets = pairwise_distance_ledger(embeddings, labels, self.pairwise_ledger, samples = 500)
 
         # need to delete the ledger after the first validation test cycle, crude but necessary
         if self.verification_pass:
-            self.pairwise_ledger = None
             self.verification_pass = False
 
-        stats = pairwise_accuracy(similarities.cpu().numpy(), targets.cpu().numpy())
+        # otherwise do the accuracy comparisons
+        else:
 
-        self.log('acc_val', stats['accuracy'], prog_bar=True, logger=True, sync_dist=True)
-        self.log('th_val', stats['threshold'], prog_bar=True, logger=True, sync_dist=True)
+            # compute the simalirity ledger once to save one overall time
+            if self.pairwise_ledger == None:
+                self.pairwise_ledger = generate_pairwise_ledger(labels) 
+
+            # calculate 500 pairs by competition standards
+            similarities, targets = pairwise_distance_ledger(embeddings, labels, self.pairwise_ledger, samples = 500)
+            stats = pairwise_accuracy(similarities.cpu().numpy(), targets.cpu().numpy())
+
+            self.log('acc_val', stats['accuracy'], prog_bar=True, logger=True, sync_dist=True)
+            self.log('th_val', stats['threshold'], prog_bar=True, logger=True, sync_dist=True)
+
+            # # calculate 10k pairs for harder tests
+            # similarities, targets = pairwise_distance_ledger(embeddings, labels, self.pairwise_ledger, samples = 10000)
+            # stats = pairwise_accuracy(similarities.cpu().numpy(), targets.cpu().numpy())
+
+            # self.log('acc_val_10k', stats['accuracy'], prog_bar=True, logger=True, sync_dist=True)
+            # self.log('th_val_10k', stats['threshold'], prog_bar=True, logger=True, sync_dist=True)
+
+            # # experimental
+            # if self.transfer_learning:
+            #     print('Transfer learning toggle')
+            #     self.transfer_learning = False
+            #     self.net.transfer_learning_params(False)
 
 
     # load test data if not already available
@@ -574,9 +597,9 @@ class Face_ID(pl.LightningModule):
     def configure_optimizers(self):
         opt = torch.optim.Adam(self.net.parameters(), lr = self.learning_rate)
         #sch = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max = 10)
-        sch = torch.optim.lr_scheduler.StepLR(opt, step_size=2)
+        sch = torch.optim.lr_scheduler.StepLR(opt, step_size=100)
 
-        return [opt], [sch]
+        return [opt]
     
     def train_dataloader(self):
 

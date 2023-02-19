@@ -45,14 +45,21 @@ def confusion_and_accuracy(accuracy, labels):
 
 # helper function to extract the valid items
 # necessary when some labels are missing 
-def sample_valid_labels(embeddings, labels, mask = -1):
+def sample_valid_labels(embeddings, labels, mask_label = -1, mask = None):
 
     # get the valid indeces
-    valid_indeces = (labels != mask).nonzero()
+    if mask == None:
+        valid_indeces = (labels != mask_label).nonzero()
+    else:
+        valid_indeces = mask.nonzero()
 
     # apply the mask sampling
-    embeddings = torch.cat([embeddings[i] for i in valid_indeces])
-    labels = torch.cat([labels[i] for i in valid_indeces])
+    if len(valid_indeces):
+        embeddings = torch.cat([embeddings[i] for i in valid_indeces])
+        labels = torch.cat([labels[i] for i in valid_indeces])
+    else:
+        embeddings = []
+        labels = []
 
     return embeddings, labels
 
