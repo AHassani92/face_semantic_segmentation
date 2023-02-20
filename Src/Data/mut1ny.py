@@ -23,6 +23,7 @@ class mut1ny_dataset():
         self.im_splits = []
         self.mask_paths = []
         self.im_synthetic = []
+        self.seg_mask_weight = []
 
         self.get_filenames()
         
@@ -103,8 +104,8 @@ class mut1ny_dataset():
                 synthetic = self.is_synthetic(fixed_path)
                 #writer.writerow(data)
 
-                self.im_paths.append(os.path.join(self.data_root, data['im_path']))
-                self.mask_paths.append(os.path.join(self.data_root, data['mask_path']))
+                self.im_paths.append(data['im_path'])
+                self.mask_paths.append(data['mask_path'])
 
 
                 if ID < int(.7*self.num_participants): split = 'train'
@@ -117,6 +118,7 @@ class mut1ny_dataset():
                 self.im_labels_location.append('Unknown')
                 self.im_splits.append(split)
                 self.im_synthetic.append(synthetic)
+                self.seg_mask_weight.append(1)
                     
         # reset the root directory
         os.chdir(proj_root)
@@ -128,7 +130,7 @@ class mut1ny_dataset():
     def verify_data(self):
         for k in range(self.data_len):
             data = {'image_path' : self.im_paths[k],'mask_path' : self.mask_paths[k], 'id' : self.im_labels_id[k], 'liveliness' : self.im_labels_liveliness[k], 'attack_class' : self.im_labels_attack_class[k],
-                'location' : self.im_labels_location[k], 'split' : self.im_splits[k], 'synthetic' : self.im_synthetic[k]}
+                'location' : self.im_labels_location[k], 'split' : self.im_splits[k], 'synthetic' : self.im_synthetic[k], 'seg_mask_weight' : self.seg_mask_weight[k]}
             print(data)
 
 
@@ -137,7 +139,7 @@ class mut1ny_dataset():
 
         # define the ledger file
         csv_file = os.path.join(self.data_root, self.ledger)
-        csv_columns = ['image_path', 'mask_path', 'id', 'liveliness', 'attack_class', 'location', 'split', 'synthetic']
+        csv_columns = ['image_path', 'mask_path', 'id', 'liveliness', 'attack_class', 'location', 'split', 'synthetic', 'seg_mask_weight']
 
         # open a csv writer and generate the ledger
         with open(csv_file, 'w') as csv_file:
@@ -147,13 +149,5 @@ class mut1ny_dataset():
             # write each value to disk
             for k in range(self.data_len):
                 data = {'image_path' : self.im_paths[k],'mask_path' : self.mask_paths[k], 'id' : self.im_labels_id[k], 'liveliness' : self.im_labels_liveliness[k], 'attack_class' : self.im_labels_attack_class[k],
-                    'location' : self.im_labels_location[k], 'split' : self.im_splits[k], 'synthetic' : self.im_synthetic[k]}
+                    'location' : self.im_labels_location[k], 'split' : self.im_splits[k], 'synthetic' : self.im_synthetic[k], 'seg_mask_weight' : self.seg_mask_weight[k]}
                 writer.writerow(data)
-
-
-
-
-
-
-
-

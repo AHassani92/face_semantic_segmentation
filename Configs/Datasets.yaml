@@ -3,11 +3,11 @@
 
 train : 
   mut1ny_head_segmentation_pro_v2 :
-    split: train
-
-  mut1ny_head_segmentation_pro_v2 :
-    split: val
-
+    split: all
+  # mut1ny_head_segmentation_pro_v2 :
+  #   split: val
+  lfw:
+    split: all
     
 val :
   # lfw-deepfunneled :

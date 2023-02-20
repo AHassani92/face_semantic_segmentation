@@ -59,6 +59,7 @@ class dataset_generator(data.Dataset):
         self.im_labels_location = []
         self.im_labels_synthetic = []
         self.seg_mask_paths = []
+        self.seg_mask_weight = []
         self.num_IDs = 0
         self.ID_map = {}
 
@@ -141,6 +142,7 @@ class dataset_generator(data.Dataset):
             mask = cv.cvtColor(mask, cv.COLOR_BGR2RGB)
 
             meta_data['mask_path'] = mask_path
+            meta_data['seg_mask_weight'] = self.seg_mask_weight[idx]
 
             # apply crop where appropriate
             if self.face_crop == 'yes' and face_bbox != None:
@@ -201,7 +203,11 @@ class dataset_generator(data.Dataset):
         for index, row in data_ledger.iterrows():
 
             # quick hack to avoid masking
-            if not self.missing_labels and row['id'] == -1:
+            if (not self.missing_labels) and row['id'] == -1:
+                continue         
+
+            # quick hack to avoid masking
+            if (not self.missing_labels) and 'mask_path' not in columns or (not self.missing_labels) and row['mask_path'] == 'None':
                 continue         
 
             # hack to toss images that fail detection
@@ -225,6 +231,7 @@ class dataset_generator(data.Dataset):
 
             # ledger specific information
             self.seg_mask_paths.append(row['mask_path'] if 'mask_path' in columns else None)
+            self.seg_mask_weight.append(row['seg_mask_weight'] if 'seg_mask_weight' in columns else 1)
             self.im_labels_attack_class.append(row['attack_class'] if 'attack_class' in columns else 'Unknown')
             self.im_labels_location.append(row['location'] if 'location' in columns else 'Unknown')
             self.im_labels_synthetic.append(0 if 'synthetic' in columns and row['synthetic'] == 'synethic' else 1)

@@ -92,7 +92,7 @@ def main(data_root):
         os.chdir(os.path.join(data_root, person))
 
         # append the mask paths
-        images = glob('*.png')
+        images = glob('*.*')
         rel_paths += [ os.path.join(person, im) for im in images]
         #paths += glob(os.path.join(data_root, person, '*.png'))
 
@@ -120,4 +120,6 @@ if __name__ == "__main__":
 
     # data_root = 'F:\\Data\\LFW Labels - mut1ny_head_segmentation_pro_v2-deeplab-resnet50-epoch=27\\lfw'
     data_root = '/s/ahassa37/code_academic/face_semantic_segmentation/Test/'
+    data_root = '/s/ahassa37/code_academic/face_semantic_segmentation/Test/Iterative_Annotation_v1/lfw'
+
     main(data_root)

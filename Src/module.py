@@ -153,6 +153,9 @@ class Face_Seg(pl.LightningModule):
         # calculate the loss
         loss = self.loss(inference, parse_data(labels, self.loss_keys))
 
+        # scale loss
+        loss = loss*(torch.mean(meta_data['seg_mask_weight'].float()))
+
         # calculate the accuracy metrics
         label_acc = parse_data(labels, self.accuracy_keys)
         acc = self.accuracy(inference, label_acc)
