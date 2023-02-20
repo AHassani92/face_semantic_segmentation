@@ -34,14 +34,19 @@ class dataset_generator(data.Dataset):
         # verify value split
         valid = {'all', 'train', 'val', 'test'}
         for split in splits:
-            if split not in valid:
-                raise ValueError("results: status must be one of %r." % valid)
+            if isinstance(split, list):
+                for _split in split:
+                    if _split not in valid:
+                        raise ValueError("results: status must be one of %r." % valid)
+            else:
+                if split not in valid:
+                    raise ValueError("results: status must be one of %r." % valid)
 
         cross_val_print = 'cross validation - ' +str(cross_val) if cross_val != None else ''
         print('Data loader init:', data_root, datasets, splits, cross_val_print)
 
         # get the data ledgers
-        self.split = split
+        self.splits = splits
         self.face_crop = face_crop
         self.liveliness = liveliness
         self.location = location
@@ -182,9 +187,10 @@ class dataset_generator(data.Dataset):
         unique = data_ledger['id'].unique()
         self.num_IDs += np.max(unique) + 1
 
-        # get the appropraite split
+        # get the appropraite split, accomodating for single vs multiple values
+        if not isinstance(split, list): split = [split]
         if split != 'all': 
-            data_ledger = data_ledger.loc[data_ledger['split'] == self.split ]
+            data_ledger = data_ledger.loc[data_ledger['split'].isin(split)]
 
         # filter by location        
         if self.location != 'all': 

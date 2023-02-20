@@ -25,7 +25,7 @@ class Configs(object):
 
 
 		# experiment configuration
-		self.experiment_name = 'Iterative_Annotation_v1'
+		self.experiment_name = 'Iterative_Annotation_v2'
 		self.model_type = 'Face_Seg' # ['Face_Detect', 'Face_ID', 'Face_PAD', 'Face_Seg']
 		assert self.model_type in ['Face_Detect', 'Face_ID', 'Face_PAD', 'Face_Seg']
 
