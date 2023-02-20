@@ -6,10 +6,8 @@ train :
     split: 
       - train
       - val
-  # mut1ny_head_segmentation_pro_v2 :
-  #   split: val
   lfw:
-    split: all
+    split: test
     
 val :
   # lfw-deepfunneled :

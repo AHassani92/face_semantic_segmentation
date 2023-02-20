@@ -189,7 +189,7 @@ class dataset_generator(data.Dataset):
 
         # get the appropraite split, accomodating for single vs multiple values
         if not isinstance(split, list): split = [split]
-        if split != 'all': 
+        if split != ['all']: 
             data_ledger = data_ledger.loc[data_ledger['split'].isin(split)]
 
         # filter by location        
