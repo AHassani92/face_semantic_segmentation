@@ -25,7 +25,7 @@ class Configs(object):
 
 
 		# experiment configuration
-		self.experiment_name = 'Iterative_Annotation_v2'
+		self.experiment_name = 'Iterative_Annotation_v3'
 		self.model_type = 'Face_Seg' # ['Face_Detect', 'Face_ID', 'Face_PAD', 'Face_Seg']
 		assert self.model_type in ['Face_Detect', 'Face_ID', 'Face_PAD', 'Face_Seg']
 
@@ -52,8 +52,8 @@ class Configs(object):
 		# training parameters
 		self.num_gpus = torch.cuda.device_count()
 		self.num_cpus = 16
-		self.learning_rate = .001
-		self.batch_size_train = 16 # size of training batches, small for accuracy
+		self.learning_rate = .0005
+		self.batch_size_train = 4 # size of training batches, small for accuracy
 		self.batch_size_test = 64 # size of the test batches, large for speed
 		self.check_val_every_n_epoch = 1 # pytorch lightning parameter to perform validation after each check_val_every_n_epoch training epochs
 		self.auto_scale_batch_size = False # pytorch lightning parameter to auto scale the batch_sie
@@ -95,7 +95,6 @@ class Configs(object):
 		self.datasets['splits_test'] = [dataset_args['test'][dataset]['split'] for dataset in dataset_args['test']]
 
 		# fetch the number of IDs per dataset
-		#ledgers = list(set(self.datasets['datasets_train'] + self.datasets['datasets_val'] + self.datasets['datasets_test']))
 		ledgers = list(set(self.datasets['datasets_train']))
 		for dataset in ledgers:
 			self.datasets['num_IDs'] += dataset_args['num_IDs'][dataset]
@@ -129,7 +128,7 @@ class Configs(object):
 
 		if self.decoder != 'none': self.best_path += '_' + self.decoder
 
-		for dataset in set(self.datasets['datasets_train']):
+		for dataset in self.datasets['datasets_train']:
 			self.best_path += '_' + dataset 
 
 		# set the sizes if not defined
@@ -149,28 +148,6 @@ class Configs(object):
 		# visualize architecture in debug mode
 		if self.DEBUG:
 			print(self.architecture, self.encoder, self.decoder)
-
-	# dataset = 'mut1ny_head_segmentation_pro_v2'
-	# data_ledger = 'ledger.csv'
-	# xml_ledger = 'training_fixed.xml'
-
-
-	# models_root = os.path.join(repo_path, 'models', 'checkpoints_mut1ny', '') 
-	# # best_check_point = 'deeplab-resnet50-epoch=12-v1.ckpt' # 'unet-inceptionv4-epoch=11-v1.ckpt' #deeplab-resnet50-epoch=09.ckpt
-	# best_check_point = 'mut1ny_head_segmentation_pro_v2-deeplab-resnet50-epoch=27.ckpt'
-
-	# # always use all GPUs
-	# num_gpus = torch.cuda.device_count()
-	# learning_rate = .001
-	# batch_size_train = 4
-	# batch_size_test = 64
-
-	# # model builder configs
-	# # architecture = 'unet'
-	# # architecture = 'unetpp'
-	# architecture = 'deeplab'
-	# encoder = 'resnet50'
-	# # encoder = 'inceptionv4'
 
 
 config = Configs()
